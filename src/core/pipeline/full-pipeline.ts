@@ -87,6 +87,7 @@ export interface PrivacyProof {
     taskDescription: boolean;
   };
   zeroOutboundPII: boolean;
+  redactionVerified: boolean;
   proofDescription: string;
 }
 
@@ -140,6 +141,7 @@ export async function executeFullPipeline(
       taskDescription: true,
     },
     zeroOutboundPII: true,
+    redactionVerified: false,
     proofDescription: "",
   };
 
@@ -192,16 +194,23 @@ export async function executeFullPipeline(
     }
     captureStep.details = `${domData.elements.length} elements, ${domData.forms.length} forms`;
 
-    // Capture screenshot (best effort — may fail on some pages)
+    // Capture screenshot directly from SW (avoids unnecessary content-script round-trip)
+    // chrome.tabs.captureVisibleTab only works from the service worker
     let screenshotDataUrl: string | null = null;
     try {
-      const screenshot = await sendToContentScript("CAPTURE_SCREENSHOT", null);
-      if (screenshot?.success && screenshot.dataUrl) {
-        screenshotDataUrl = screenshot.dataUrl;
-        captureStep.details += ", screenshot captured";
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id && !isRestrictedUrl(tab.url)) {
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+          format: "png",
+          quality: 80,
+        });
+        if (dataUrl) {
+          screenshotDataUrl = dataUrl;
+          captureStep.details += ", screenshot captured";
+        }
       }
     } catch {
-      // Screenshot is optional — DOM-only path still works
+      // Screenshot capture is optional — DOM-only path still works
     }
     captureStep.status = "complete";
 
@@ -322,7 +331,57 @@ export async function executeFullPipeline(
     }
 
     const detectionResult = await runStep(detectStep, async () => {
-      return detectAllPII(domData, undefined, ocrTextBlocks.length > 0 ? ocrTextBlocks : undefined);
+      // DOM + OCR PII detection
+      const domResult = await detectAllPII(domData, undefined, ocrTextBlocks.length > 0 ? ocrTextBlocks : undefined);
+
+      // Vision PII detection (faces, password dots) via offscreen ML host
+      if (screenshotDataUrl) {
+        try {
+          const visionPII: Array<{
+            category: string;
+            sensitivity: string;
+            boundingBox: { x: number; y: number; width: number; height: number };
+            confidence: number;
+            detectionMethod: string;
+          }> = await callOffscreen("detectVisionPII", { imageDataUrl: screenshotDataUrl });
+
+          if (visionPII && visionPII.length > 0) {
+            // Merge vision PII regions into DOM results
+            // Map vision categories to redaction strategies
+            const REDACTION_MAP: Record<string, string> = {
+              face: "blur", password: "black_box", aadhaar: "black_box",
+              pan: "black_box", financial: "black_box", medical: "black_box",
+              phone: "mask_text", email: "mask_text", ifsc: "mask_text",
+              upi: "mask_text", name: "mask_text", address: "mask_text",
+            };
+            for (const vRegion of visionPII) {
+              const strategy = REDACTION_MAP[vRegion.category] || "blur";
+              domResult.regions.push({
+                id: `pii-vision-${domResult.regions.length + 1}`,
+                category: vRegion.category as any,
+                sensitivity: vRegion.sensitivity as any,
+                boundingBox: vRegion.boundingBox,
+                textValue: null,
+                fieldSelector: null,
+                confidence: vRegion.confidence,
+                source: "vision" as const,
+                detectionMethod: vRegion.detectionMethod,
+                redactionStrategy: strategy as any,
+              });
+            }
+            // Recompute summary
+            domResult.summary.totalRegions = domResult.regions.length;
+            domResult.summary.criticalCount = domResult.regions.filter((r: any) => r.sensitivity === "critical").length;
+            domResult.summary.highCount = domResult.regions.filter((r: any) => r.sensitivity === "high").length;
+            domResult.summary.bySource.vision += visionPII.length;
+            traceObserve(`Vision PII: ${visionPII.length} regions detected (faces: ${visionPII.filter((r: any) => r.category === "face").length}, passwords: ${visionPII.filter((r: any) => r.category === "password").length})`);
+          }
+        } catch (err) {
+          console.warn("[VLESS] Vision PII detection failed:", err);
+        }
+      }
+
+      return domResult;
     });
 
     if (detectionResult) {
@@ -475,7 +534,7 @@ export async function executeFullPipeline(
 
     const sanitizeStep = addStep("sanitize");
     const sanitizedContext = await runStep(sanitizeStep, async () => {
-      return buildSanitizedContext(domData, piiDetection, input.taskDescription, input.dataContext);
+      return buildSanitizedContext(domData, piiDetection, input.taskDescription);
     });
 
     if (!sanitizedContext) {
@@ -511,7 +570,27 @@ export async function executeFullPipeline(
         }
       }
 
-      // Priority 2: Multi-provider LLM (text-only planning)
+      // Priority 2: WebLLM — fully offline on-device LLM (WebGPU)
+      try {
+        const webllmReady = await callOffscreen("isWebLLMReady", undefined);
+        if (webllmReady) {
+          console.log("[VLESS] Using WebLLM for fully offline planning");
+          const { planWithWebLLM } = await import("../agent/webllm-planner");
+          const webllmResult = await planWithWebLLM(
+            input.taskDescription,
+            sanitizedContext,
+            input.dataContext
+          );
+          if (webllmResult.success && webllmResult.steps.length > 0) {
+            traceObserve(`WebLLM generated ${webllmResult.steps.length} steps (fully offline)`);
+            return webllmResult;
+          }
+        }
+      } catch {
+        // WebLLM not available — continue to cloud
+      }
+
+      // Priority 3: Multi-provider LLM (text-only planning)
       const llmResult = await generatePlanWithBestProvider(
         input.taskDescription,
         sanitizedContext,
@@ -603,7 +682,23 @@ export async function executeFullPipeline(
       piiRedacted: privacyProof.sensitiveDataRedacted,
     });
 
-    // Build privacy proof
+    // Build privacy proof — recompute zeroOutboundPII based on actual data flow
+    privacyProof.redactionVerified = redactionVerified;
+    // If cloud/VLM was used, raw screenshot left the device (even if redacted)
+    const usedCloud = planResult.provider === "cloud" || planResult.provider?.startsWith("openai") ||
+      planResult.provider?.startsWith("claude") || planResult.provider?.startsWith("openrouter") ||
+      planResult.provider?.startsWith("ollama");
+    const usedVLM = planResult.provider?.includes("vlm") || planResult.provider?.includes("/");
+    if (usedCloud || usedVLM) {
+      privacyProof.dataSentToServer.sanitizedStructure = true;
+      // Only mark PII sent if the redaction failed or wasn't verified
+      if (!redactionVerified && redactionSummary.redacted > 0) {
+        privacyProof.zeroOutboundPII = false;
+      }
+    }
+    // Sanity: if tripwire blocked requests, PII was attempted to leave
+    // (tripwire stats are checked in the UI, not here)
+
     if (redactionVerified) {
       privacyProof.proofDescription = generatePrivacyProofDescription(privacyProof) +
         "\n✅ RE-OCR VERIFIED: Redacted frame contains zero PII text.";
@@ -780,7 +875,6 @@ function buildSanitizedContext(
   domData: PageState,
   piiDetection: PIIDetectionResult,
   taskDescription: string,
-  dataContext?: Record<string, string>
 ): SanitizedContext {
   const piiFieldSelectors = new Set(
     piiDetection.regions
@@ -855,7 +949,8 @@ function buildSanitizedContext(
       confidenceScore: piiDetection.summary.overallConfidence,
     },
     taskDescription,
-    dataContext,
+    // PRIVACY: dataContext (raw PII values) is NEVER included in the sanitized context.
+    // PII values are filled locally by the client after the plan is returned.
   };
 }
 
@@ -1144,7 +1239,7 @@ function buildErrorResult(
     privacyProof: {
       sensitiveDataDetected: 0, sensitiveDataRedacted: 0,
       dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false },
-      zeroOutboundPII: true, proofDescription: "",
+      zeroOutboundPII: true, redactionVerified: false, proofDescription: "",
     },
     reasoningTrace: null,
     latency: { capture: 0, ocr: 0, piiDetection: 0, redaction: 0, verification: 0, planning: 0, execution: 0, total: 0, backend: "error", tier: "error" },

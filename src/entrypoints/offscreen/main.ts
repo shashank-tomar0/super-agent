@@ -8,8 +8,9 @@ import { serveOffscreen } from "../../core/runtime/messaging";
 import { detectBackend } from "../../core/runtime/backend";
 import { getModelStatuses, warmModels } from "../../core/runtime/model-host";
 import { runOcr } from "../../core/ocr/ocr-engine";
-import { redactScreenshot, verifyRedactionOffscreen } from "../../core/privacy/offscreen-redact";
+import { redactScreenshot, verifyRedactionOffscreen, detectVisionPII } from "../../core/privacy/offscreen-redact";
 import { perceiveScreen, groundPhrase } from "../../core/perception/florence2-engine";
+import { ensureWebLLM, isWebLLMReady } from "../../core/agent/webllm-planner";
 
 serveOffscreen({
   ping: () => ({ pong: true as const, ts: Date.now() }),
@@ -21,6 +22,11 @@ serveOffscreen({
   verifyRedaction: (params) => verifyRedactionOffscreen(params.imageDataUrl),
   perceiveScreen: (params) => perceiveScreen(params.imageDataUrl),
   groundPhrase: (params) => groundPhrase(params.imageDataUrl, params.phrase),
+  // WebLLM: fully offline on-device LLM planning via WebGPU
+  ensureWebLLM: () => ensureWebLLM(),
+  isWebLLMReady: () => isWebLLMReady(),
+  // Vision PII: face + password dot detection on screenshots
+  detectVisionPII: (params: { imageDataUrl: string }) => detectVisionPII(params.imageDataUrl),
 });
 
 // Announce readiness in the offscreen console (visible via chrome://extensions

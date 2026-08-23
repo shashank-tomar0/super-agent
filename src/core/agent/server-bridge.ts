@@ -75,7 +75,8 @@ export interface SanitizedContext {
   };
   // Task context
   taskDescription: string;
-  dataContext?: Record<string, string>;
+  // NOTE: dataContext (raw PII values) is NEVER included here.
+  // PII values are filled locally by the client after the plan is returned.
 }
 
 export interface PlanResult {
@@ -110,8 +111,8 @@ class OllamaProvider implements ServerProvider {
         const modelsData = await modelsResponse.json();
         const modelNames = (modelsData.models || []).map((m: { name: string }) => m.name);
 
-        if (modelNames.some((n: string) => n.includes("qwen2.5:3b"))) {
-          this.model = "qwen2.5:3b";
+        if (modelNames.some((n: string) => n.includes("qwen2.5:1.5b"))) {
+          this.model = "qwen2.5:1.5b";
         } else if (modelNames.some((n: string) => n.includes("qwen2.5"))) {
           this.model = modelNames.find((n: string) => n.includes("qwen2.5"));
         } else if (modelNames.length > 0) {

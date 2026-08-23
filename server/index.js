@@ -25,8 +25,12 @@ const CLOUD_API_MODEL = process.env.CLOUD_API_MODEL || "claude-sonnet-4-20250514
 // ── Server ───────────────────────────────────────────────────
 
 const server = http.createServer(async (req, res) => {
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // CORS headers — restrict to extension origin only
+  const allowedOrigin = req.headers.origin || "";
+  const isExtension = allowedOrigin.startsWith("chrome-extension://") ||
+    allowedOrigin.startsWith("moz-extension://") ||
+    allowedOrigin === ""; // Allow non-browser clients (e.g. curl, tests)
+  res.setHeader("Access-Control-Allow-Origin", isExtension ? allowedOrigin : "http://localhost:3000");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -57,9 +61,25 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const { task, context, data } = JSON.parse(body);
 
-      console.log(`[VLESS] Plan request: "${task}"`);
-      console.log(`[VLESS] Context: ${context?.pageStructure?.metadata?.domain || "unknown"}`);
-      console.log(`[VLESS] PII redacted: ${context?.redactionProof?.totalPIIDetected || 0} regions`);
+    console.log(`[VLESS] Plan request: "${task}"`);
+    console.log(`[VLESS] Context domain: ${context?.pageStructure?.metadata?.domain || "unknown"}`);
+    console.log(`[VLESS] PII redacted: ${context?.redactionProof?.totalPIIDetected || 0} regions`);
+
+    // Server-side PII defense-in-depth: scan incoming context for any leaked PII
+    const contextStr = JSON.stringify(context || {});
+    const serverSidePIIPatterns = [
+      /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/, // Aadhaar
+      /\b[A-Z]{5}\d{4}[A-Z]\b/,              // PAN
+      /\b[6-9]\d{9}\b/,                        // Indian phone
+    ];
+    for (const pattern of serverSidePIIPatterns) {
+      if (pattern.test(contextStr)) {
+        console.warn("[VLESS] ⚠️ SERVER-SIDE PII DETECTION: Leaked PII found in incoming context. Blocking.");
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "PII detected in context — request blocked by server-side privacy scan" }));
+        return;
+      }
+    }
 
       // Try Ollama first, then cloud API
       let result;
@@ -127,7 +147,7 @@ async function planWithOllama(task, context, data) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "qwen2.5:3b",
+      model: "qwen2.5:1.5b",
       prompt,
       stream: false,
       options: { temperature: 0.3, num_predict: 2048 },
@@ -152,7 +172,7 @@ Forms: ${ps?.forms?.length || 0}`;
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "qwen2.5:3b",
+      model: "qwen2.5:1.5b",
       prompt,
       stream: false,
       options: { temperature: 0.3, num_predict: 512 },

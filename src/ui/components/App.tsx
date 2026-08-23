@@ -392,8 +392,21 @@ export function App() {
             </span>
           )}
           <span className="text-[9px] text-gray-600 flex items-center gap-1">
-            <span className="w-1 h-1 bg-emerald-500 rounded-full inline-block" />
-            On-Device
+            <span className={`w-1 h-1 rounded-full inline-block ${
+              pipelineResult?.planResult?.provider === 'cloud' ||
+              pipelineResult?.planResult?.provider?.startsWith('openai') ||
+              pipelineResult?.planResult?.provider?.startsWith('claude') ||
+              pipelineResult?.planResult?.provider?.startsWith('openrouter')
+                ? 'bg-amber-500' : 'bg-emerald-500'
+            }`} />
+            {pipelineResult?.planResult?.provider === 'rule-based' || !pipelineResult
+              ? 'On-Device'
+              : pipelineResult?.planResult?.provider === 'deterministic'
+                ? 'On-Device'
+                : pipelineResult?.planResult?.provider === 'ollama'
+                  ? 'On-Device'
+                  : `Via ${pipelineResult?.planResult?.provider?.split('/')[0] || 'server'}`
+            }
           </span>
         </div>
       </footer>
@@ -493,6 +506,7 @@ function DashboardTab({
             <div>PII detected: {pipelineResult.privacyProof.sensitiveDataDetected}</div>
             <div>PII redacted: {pipelineResult.privacyProof.sensitiveDataRedacted}</div>
             <div>Zero PII sent: {pipelineResult.privacyProof.zeroOutboundPII ? "Yes" : "No"}</div>
+            <div>Re-OCR verified: {pipelineResult.privacyProof.redactionVerified ? "Passed" : "Pending"}</div>
           </div>
         </div>
       )}

@@ -17,7 +17,6 @@ import type {
   AgentTask,
   PageState,
   MessageType,
-  PlannedAction,
   AgentAction,
 } from "../../types";
 import type { PipelineResult } from "../../core/pipeline/full-pipeline";
@@ -28,16 +27,15 @@ import { callOffscreen, isRuntimeEnvelope } from "../../core/runtime/messaging";
 
 // ── Lazy imports: HEAVY modules loaded on-demand ──────────
 // executeFullPipeline pulls in ONNX runtime, vision pipeline, PII detector
-// llm-bridge pulls in server communication
 // llm-providers pulls in 4 provider implementations + prompt builder
 // Loading these eagerly makes the SW 70MB → crashes on startup.
-let _llmBridge: any = null;
 let _fullPipeline: any = null;
 let _llmProviders: any = null;
+let _llmBridge: any = null;
 
-async function lazyLLMBridge() { if (!_llmBridge) _llmBridge = await import("../../core/agent/llm-bridge"); return _llmBridge; }
 async function lazyFullPipeline() { if (!_fullPipeline) _fullPipeline = await import("../../core/pipeline/full-pipeline"); return _fullPipeline; }
 async function lazyLLMProviders() { if (!_llmProviders) _llmProviders = await import("../../core/agent/llm-providers"); return _llmProviders; }
+async function lazyLLMBridge() { if (!_llmBridge) _llmBridge = await import("../../core/agent/llm-bridge"); return _llmBridge; }
 
 export default defineBackground({
   persistent: false,
@@ -214,7 +212,6 @@ export default defineBackground({
         currentAbortController.abort();
       }
       currentAbortController = new AbortController();
-      const signal = currentAbortController.signal;
 
       // Start privacy monitoring and keepalive
       startMonitoring();
@@ -281,7 +278,7 @@ export default defineBackground({
           dataMappings: [],
         };
 
-        log(result.success ? "success" : "error", task.result);
+        log(result.success ? "success" : "error", task.result ?? "no result");
         log("success", `Privacy: ${result.privacyProof.sensitiveDataDetected} PII detected, ` +
           `${result.privacyProof.sensitiveDataRedacted} redacted, ` +
           `${result.privacyProof.zeroOutboundPII ? "zero" : "SOME"} PII sent to server`
@@ -289,7 +286,7 @@ export default defineBackground({
 
         const finalStats = stopMonitoring();
         stopKeepalive();
-        broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean(), privacyStats: finalStats, pipelineResult: result } });
+        broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean(), privacyStats: finalStats, pipelineResult: result ?? undefined } });
         return task;
       } catch (error) {
         task.status = "failed";
@@ -404,218 +401,6 @@ export default defineBackground({
     }
 
     // ══════════════════════════════════════════════════════
-    // RULE-BASED PLAN GENERATOR
-    // When Ollama isn't available, generate a plan from rules
-    // ══════════════════════════════════════════════════════
-
-    function generateRuleBasedPlan(
-      description: string,
-      pageState: PageState,
-      data?: Record<string, string>
-    ) {
-      const steps: PlannedAction[] = [];
-      let idx = 0;
-      const lower = description.toLowerCase();
-
-      // Fill form: click + type each unfilled required field
-      if (lower.includes("fill") || lower.includes("complete") || lower.includes("submit")) {
-        const allFields = pageState.forms.flatMap((f) => f.fields);
-        const unfilled = allFields.filter((f) => !f.filledByUser && f.required);
-
-        for (const field of unfilled) {
-          const value = data?.[field.name] || data?.[field.label] || "";
-          const target = field.id || field.name || field.label;
-
-          if (value) {
-            // Click to focus
-            steps.push({
-              index: idx++,
-              action: {
-                id: `a-${idx}`, type: "click",
-                target, retries: 0, maxRetries: 3,
-              },
-              reasoning: `Focus "${field.label || field.name}"`,
-              confidence: 0.9,
-              verification: "Field should be focused",
-              risk: "low",
-            });
-
-            // Type value
-            steps.push({
-              index: idx++,
-              action: {
-                id: `a-${idx}`, type: "type",
-                target, value, retries: 0, maxRetries: 3,
-              },
-              reasoning: `Type "${value}" in "${field.label || field.name}"`,
-              confidence: 0.85,
-              verification: `Field value should be "${value}"`,
-              risk: "low",
-            });
-          } else if (field.options.length > 0) {
-            // Select dropdown — pick first option as placeholder
-            steps.push({
-              index: idx++,
-              action: {
-                id: `a-${idx}`, type: "select",
-                target, value: field.options[0] || "", retries: 0, maxRetries: 3,
-              },
-              reasoning: `Select "${field.options[0]}" in "${field.label || field.name}"`,
-              confidence: 0.7,
-              verification: "Option should be selected",
-              risk: "low",
-            });
-          }
-        }
-      }
-
-      // Scroll
-      if (lower.includes("scroll")) {
-        const dir = lower.includes("up") ? "up" : "down";
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "scroll",
-            value: dir, retries: 0, maxRetries: 1,
-          },
-          reasoning: `Scroll ${dir}`,
-          confidence: 0.9,
-          verification: "Page should scroll",
-          risk: "low",
-        });
-      }
-
-      // Click specific element
-      const clickMatch = lower.match(/(?:click|press|tap)\s+(?:on\s+)?["']?([^"']+)["']?/);
-      if (clickMatch) {
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "click",
-            target: clickMatch[1].trim(), retries: 0, maxRetries: 3,
-          },
-          reasoning: `Click "${clickMatch[1].trim()}"`,
-          confidence: 0.8,
-          verification: "Element should respond",
-          risk: "low",
-        });
-      }
-
-      // Search on a site: "search X on youtube", "find X on google"
-      const searchMatch = lower.match(/(?:search|find|look up|search for)\s+(.+?)\s+(?:on|in|at)\s+(\S+)/);
-      if (searchMatch) {
-        const query = searchMatch[1].trim();
-        const site = searchMatch[2].trim();
-        // Map common site names to URLs
-        const siteUrls: Record<string, string> = {
-          youtube: "https://www.youtube.com",
-          google: "https://www.google.com",
-          bing: "https://www.bing.com",
-          amazon: "https://www.amazon.in",
-          flipkart: "https://www.flipkart.com",
-          twitter: "https://x.com",
-          x: "https://x.com",
-          github: "https://github.com",
-        };
-        const baseUrl = siteUrls[site] || `https://www.${site}.com`;
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "navigate",
-            value: baseUrl, retries: 0, maxRetries: 1,
-          },
-          reasoning: `Navigate to ${site}`,
-          confidence: 0.9,
-          verification: "URL should change",
-          risk: "medium",
-        });
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "type",
-            target: "search",
-            value: query, retries: 0, maxRetries: 3,
-          },
-          reasoning: `Search for "${query}" on ${site}`,
-          confidence: 0.85,
-          verification: "Search results should appear",
-          risk: "low",
-        });
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "press_key",
-            key: "Enter", retries: 0, maxRetries: 1,
-          },
-          reasoning: "Submit search",
-          confidence: 0.9,
-          verification: "Page should show results",
-          risk: "low",
-        });
-      }
-
-      // Open a site by name: "open youtube", "go to google", "visit github"
-      const siteMatch = lower.match(/(?:go to|open|navigate to|visit)\s+(\S+)$/);
-      if (siteMatch && steps.length === 0) {
-        const site = siteMatch[1].replace(/[^a-z0-9.]/g, "");
-        const siteUrls: Record<string, string> = {
-          youtube: "https://www.youtube.com",
-          google: "https://www.google.com",
-          bing: "https://www.bing.com",
-          amazon: "https://www.amazon.in",
-          flipkart: "https://www.flipkart.com",
-          twitter: "https://x.com",
-          x: "https://x.com",
-          github: "https://github.com",
-        };
-        let url = siteUrls[site];
-        if (!url) {
-          // If it looks like a domain (has dot or is a known TLD)
-          if (site.includes(".") || /^(com|org|net|in|io|dev)$/.test(site)) {
-            url = site.startsWith("http") ? site : `https://${site}`;
-          } else {
-            // Try as a site name
-            url = `https://www.${site}.com`;
-          }
-        }
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "navigate",
-            value: url, retries: 0, maxRetries: 1,
-          },
-          reasoning: `Navigate to "${url}"`,
-          confidence: 0.9,
-          verification: "URL should change",
-          risk: "medium",
-        });
-      }
-
-      // Fallback: no recognized command
-      if (steps.length === 0) {
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "wait",
-            timeout: 1000, retries: 0, maxRetries: 0,
-          },
-          reasoning: `No actions recognized for: "${description}"`,
-          confidence: 0.3,
-          verification: "Page unchanged",
-          risk: "low",
-        });
-      }
-
-      return {
-        steps,
-        estimatedTime: steps.length * 1500,
-        riskLevel: "low" as const,
-        requiresConfirmation: false,
-        dataMappings: [],
-      };
-    }
-
-    // ══════════════════════════════════════════════════════
     // FULL PIPELINE — PII Detection + Redaction + Planning
     // ══════════════════════════════════════════════════════
 
@@ -637,7 +422,7 @@ export default defineBackground({
           piiDetection: { regions: [], summary: { totalRegions: 0, criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, byCategory: {} as any, bySource: { dom: 0, vision: 0, combined: 0 }, overallConfidence: 0, detectionTimeMs: 0 }, sanitizedDOMMetadata: { safeElements: [], safeTextContent: "", safeForms: [], pageMetadata: { title: "", url: "", hasForm: false, hasCAPTCHA: false, elementCount: 0 } } },
           redactionSummary: { totalPII: 0, redacted: 0, cssInjected: false, overlayShown: false },
           planResult: { success: false, steps: [], reasoning: "", provider: "none", latencyMs: 0 },
-          privacyProof: { sensitiveDataDetected: 0, sensitiveDataRedacted: 0, dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false }, zeroOutboundPII: true, proofDescription: "" },
+          privacyProof: { sensitiveDataDetected: 0, sensitiveDataRedacted: 0, dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false }, zeroOutboundPII: true, redactionVerified: false, proofDescription: "" },
           reasoningTrace: null,
           latency: { capture: 0, ocr: 0, piiDetection: 0, redaction: 0, verification: 0, planning: 0, execution: 0, total: 0, backend: "error", tier: "error" },
           totalLatencyMs: 0,

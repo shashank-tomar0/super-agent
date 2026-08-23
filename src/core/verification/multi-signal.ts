@@ -207,60 +207,24 @@ async function verifyErrorCheck(
   _action: AgentAction,
   result: ActionResult
 ): Promise<VerificationSignal> {
-  // Check for common error indicators in the page
-  try {
-    const errorIndicators = [
-      // Error messages
-      document.querySelector(".error-message, .alert-danger, .error"),
-      // Form validation errors
-      document.querySelector("[class*='error'], [class*='invalid']"),
-      // Modal dialogs (might indicate an error)
-      document.querySelector("[role='alertdialog']"),
-      // Toast notifications with error
-      document.querySelector("[class*='toast'][class*='error']"),
-    ];
-
-    const hasErrors = errorIndicators.some((el) => el !== null);
-
-    if (hasErrors) {
-      // Extract error text
-      const errorTexts = errorIndicators
-        .filter((el) => el !== null)
-        .map((el) => el?.textContent?.trim())
-        .filter(Boolean);
-
-      return {
-        type: "error_check",
-        passed: false,
-        confidence: 0.8,
-        details: `Error detected: ${errorTexts.join(", ")}`,
-      };
-    }
-
-    // Check if action itself returned an error
-    if (!result.success && result.error) {
-      return {
-        type: "error_check",
-        passed: false,
-        confidence: 0.9,
-        details: `Action returned error: ${result.error}`,
-      };
-    }
-
+  // Check if action itself returned an error (SW-safe — no document access)
+  if (!result.success && result.error) {
     return {
       type: "error_check",
-      passed: true,
-      confidence: 0.85,
-      details: "No errors detected on page",
-    };
-  } catch (error) {
-    return {
-      type: "error_check",
-      passed: true,
-      confidence: 0.5,
-      details: "Error check completed with issues",
+      passed: false,
+      confidence: 0.9,
+      details: `Action returned error: ${result.error}`,
     };
   }
+
+  // DOM error detection must be done via content script message, not direct document access.
+  // For now, return neutral — the content script's executeAction already checks for errors.
+  return {
+    type: "error_check",
+    passed: true,
+    confidence: 0.7,
+    details: "Error check passed (action returned success)",
+  };
 }
 
 // ── Signal: Accessibility Tree ───────────────────────────────
@@ -269,84 +233,15 @@ async function verifyAccessibilityTree(
   _action: AgentAction,
   _result: ActionResult
 ): Promise<VerificationSignal> {
-  try {
-    // Check ARIA live regions for status messages
-    const liveRegions = document.querySelectorAll(
-      "[aria-live='polite'], [aria-live='assertive'], [role='status']"
-    );
-
-    const statusMessages: string[] = [];
-    liveRegions.forEach((region) => {
-      const text = region.textContent?.trim();
-      if (text) statusMessages.push(text);
-    });
-
-    // Check for success indicators
-    const successPatterns = [
-      /success/i,
-      /submitted/i,
-      /saved/i,
-      /confirmed/i,
-      /completed/i,
-      /thank you/i,
-    ];
-
-    const hasSuccess = statusMessages.some((msg) =>
-      successPatterns.some((p) => p.test(msg))
-    );
-
-    // Check for failure indicators
-    const failurePatterns = [
-      /error/i,
-      /failed/i,
-      /invalid/i,
-      /required/i,
-      /denied/i,
-      /forbidden/i,
-    ];
-
-    const hasFailure = statusMessages.some((msg) =>
-      failurePatterns.some((p) => p.test(msg))
-    );
-
-    if (hasSuccess) {
-      return {
-        type: "accessibility_tree",
-        passed: true,
-        confidence: 0.9,
-        details: `Success message detected: ${statusMessages.filter((m) =>
-          successPatterns.some((p) => p.test(m))
-        ).join(", ")}`,
-      };
-    }
-
-    if (hasFailure) {
-      return {
-        type: "accessibility_tree",
-        passed: false,
-        confidence: 0.85,
-        details: `Failure message detected: ${statusMessages.filter((m) =>
-          failurePatterns.some((p) => p.test(m))
-        ).join(", ")}`,
-      };
-    }
-
-    return {
-      type: "accessibility_tree",
-      passed: true,
-      confidence: 0.6,
-      details: statusMessages.length > 0
-        ? `Accessibility messages: ${statusMessages.join("; ")}`
-        : "No accessibility status messages detected",
-    };
-  } catch (error) {
-    return {
-      type: "accessibility_tree",
-      passed: true,
-      confidence: 0.4,
-      details: "Accessibility check completed with issues",
-    };
-  }
+  // ARIA live region detection requires DOM access (content script context).
+  // This function is designed to be called from the content script, not the SW.
+  // When called from SW, return neutral.
+  return {
+    type: "accessibility_tree",
+    passed: true,
+    confidence: 0.5,
+    details: "Accessibility check deferred to content script",
+  };
 }
 
 // ── Confidence Calculation ───────────────────────────────────
@@ -395,28 +290,15 @@ function calculateOverallConfidence(
 function detectUnexpectedChanges(result: ActionResult): string[] {
   const changes: string[] = [];
 
-  // Check for new modals/dialogs
-  const modals = document.querySelectorAll(
-    "[role='dialog'], [role='alertdialog'], .modal"
-  );
-  if (modals.length > 0) {
-    changes.push(`New dialog/modal appeared (${modals.length} found)`);
-  }
-
-  // Check for navigation redirects
+  // Check for navigation redirects (SW-safe)
   if (result.pageStateBefore.url !== result.pageStateAfter.url) {
     changes.push(
       `Unexpected navigation: ${result.pageStateBefore.url} → ${result.pageStateAfter.url}`
     );
   }
 
-  // Check for new error elements
-  const errors = document.querySelectorAll(
-    ".error, .alert-danger, [class*='error']"
-  );
-  if (errors.length > 0) {
-    changes.push(`Error elements appeared (${errors.length} found)`);
-  }
+  // DOM-based checks (modals, errors) require content script context.
+  // These are handled by the page state comparison in verifyDOMDiff.
 
   return changes;
 }

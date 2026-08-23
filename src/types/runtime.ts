@@ -173,6 +173,21 @@ export interface OffscreenMethods {
     params: { imageDataUrl: string; phrase: string };
     result: { phrase: string; results: Array<{ box: { x: number; y: number; w: number; h: number }; confidence: number }> };
   };
+  /** Ensure WebLLM model is loaded (WebGPU, fully offline). */
+  ensureWebLLM: { params: void; result: boolean };
+  /** Check if WebLLM is ready without triggering a load. */
+  isWebLLMReady: { params: void; result: boolean };
+  /** Detect vision PII (faces, password dots) from a screenshot. */
+  detectVisionPII: {
+    params: { imageDataUrl: string };
+    result: Array<{
+      category: string;
+      sensitivity: string;
+      boundingBox: { x: number; y: number; width: number; height: number };
+      confidence: number;
+      detectionMethod: string;
+    }>;
+  };
 }
 
 export type OffscreenMethodName = keyof OffscreenMethods;

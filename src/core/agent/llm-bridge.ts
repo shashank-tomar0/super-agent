@@ -9,7 +9,7 @@ import type { PageState, PlannedAction, AgentAction } from "../../types";
 // ── Configuration ────────────────────────────────────────────
 
 const OLLAMA_HOST = "http://localhost:11434";
-const DEFAULT_MODEL = "qwen2.5:3b";
+const DEFAULT_MODEL = "qwen2.5:1.5b";
 const REQUEST_TIMEOUT = 30_000; // 30 seconds
 
 // ── Connection State ─────────────────────────────────────────
@@ -65,9 +65,9 @@ export async function checkOllamaAvailability(): Promise<{
       const models = modelsData.models || [];
       const modelNames = models.map((m: { name: string }) => m.name);
 
-      // Prefer qwen2.5:3b, then any qwen, then any model
-      if (modelNames.some((n: string) => n.includes("qwen2.5:3b"))) {
-        state.model = "qwen2.5:3b";
+      // Prefer qwen2.5:1.5b, then any qwen, then any model
+      if (modelNames.some((n: string) => n.includes("qwen2.5:1.5b"))) {
+        state.model = "qwen2.5:1.5b";
       } else if (modelNames.some((n: string) => n.includes("qwen2.5:1.5b"))) {
         state.model = "qwen2.5:1.5b";
       } else if (modelNames.length > 0) {
@@ -294,7 +294,7 @@ function buildPlanningPrompt(
 
   const forms = pageState.forms.map(f => {
     const fields = f.fields.map(ff => {
-      const val = ff.value ? `value="${ff.value}"` : "EMPTY";
+      const val = ff.value ? "FILLED" : "EMPTY";
       const req = ff.required ? "REQUIRED" : "";
       return `  - ${ff.label || ff.name || ff.id}: ${ff.type} ${val} ${req}`;
     }).join("\n");

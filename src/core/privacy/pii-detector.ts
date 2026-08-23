@@ -183,7 +183,7 @@ interface PIIRule {
   redactionStrategy: RedactionStrategy;
 }
 
-const PII_RULES: PIIRule[] = [
+export const PII_RULES: PIIRule[] = [
   {
     category: "password",
     sensitivity: "critical",
