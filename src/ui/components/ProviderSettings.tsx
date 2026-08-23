@@ -4,8 +4,6 @@ import {
   saveProviderConfigs,
 } from "../../core/agent/llm-providers";
 
-// ── Types ────────────────────────────────────────────────────
-
 type ProviderID = "ollama" | "claude" | "openai" | "openrouter";
 
 interface ProviderConfig {
@@ -28,8 +26,6 @@ interface ProviderStatus {
   error?: string;
 }
 
-// ── Provider Defaults ────────────────────────────────────────
-
 const PROVIDER_INFO: Record<
   ProviderID,
   {
@@ -43,7 +39,7 @@ const PROVIDER_INFO: Record<
 > = {
   ollama: {
     name: "Ollama (Local)",
-    description: "Free, runs on your machine. No API key needed.",
+    description: "Free local execution. No API key needed.",
     defaultModel: "qwen2.5:1.5b",
     needsKey: false,
     setupUrl: "https://ollama.ai/download",
@@ -51,7 +47,7 @@ const PROVIDER_INFO: Record<
   },
   claude: {
     name: "Claude (Anthropic)",
-    description: "Best reasoning. Pay per token.",
+    description: "High-reasoning cloud planner.",
     defaultModel: "claude-3-5-haiku-20241022",
     needsKey: true,
     setupUrl: "https://console.anthropic.com/settings/keys",
@@ -59,7 +55,7 @@ const PROVIDER_INFO: Record<
   },
   openai: {
     name: "OpenAI (GPT)",
-    description: "Fast, widely supported. Pay per token.",
+    description: "Fast cloud reasoning provider.",
     defaultModel: "gpt-4o-mini",
     needsKey: true,
     setupUrl: "https://platform.openai.com/api-keys",
@@ -67,7 +63,7 @@ const PROVIDER_INFO: Record<
   },
   openrouter: {
     name: "OpenRouter",
-    description: "Access 100+ models via one API key.",
+    description: "Universal open-weight model router.",
     defaultModel: "meta-llama/llama-3.2-1b-instruct",
     needsKey: true,
     setupUrl: "https://openrouter.ai/keys",
@@ -81,8 +77,6 @@ const PROVIDER_INFO: Record<
   },
 };
 
-// ── Component ────────────────────────────────────────────────
-
 export function ProviderSettings() {
   const [configs, setConfigs] = useState<Record<ProviderID, ProviderConfig> | null>(null);
   const [statuses, setStatuses] = useState<ProviderStatus[]>([]);
@@ -90,10 +84,6 @@ export function ProviderSettings() {
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
 
-  // Load configs.
-  // Goes through the shared loader so keys are decrypted from local
-  // storage with the device key — the component must not read raw
-  // storage, or it would resurrect the plaintext path.
   useEffect(() => {
     let cancelled = false;
     loadProviderConfigs()
@@ -108,7 +98,6 @@ export function ProviderSettings() {
     };
   }, []);
 
-  // Check providers
   const checkProviders = useCallback(async () => {
     setChecking(true);
     try {
@@ -121,7 +110,6 @@ export function ProviderSettings() {
         setStatuses(response.statuses);
       }
     } catch {
-      // Fallback: check Ollama directly
       try {
         const resp = await fetch("http://localhost:11434/api/tags", {
           signal: AbortSignal.timeout(3000),
@@ -151,7 +139,7 @@ export function ProviderSettings() {
             available: false,
             model: null,
             latencyMs: 0,
-            error: "Not running — start Ollama",
+            error: "Not running (start Ollama locally)",
           },
           { id: "claude", name: "Claude", available: false, model: null, latencyMs: 0, error: "Disabled" },
           { id: "openai", name: "OpenAI", available: false, model: null, latencyMs: 0, error: "Disabled" },
@@ -167,69 +155,63 @@ export function ProviderSettings() {
     checkProviders();
   }, [checkProviders]);
 
-  // Save config
-  const saveConfig = useCallback(
-    async (id: ProviderID, updates: Partial<ProviderConfig>) => {
-      if (!configs) return;
-      setSaving(id);
-      const newConfigs = {
-        ...configs,
-        [id]: { ...configs[id], ...updates },
-      };
-      setConfigs(newConfigs);
-      // Shared saver: encrypts apiKey with the device key before writing.
-      await saveProviderConfigs(newConfigs);
-      // Re-check after saving
-      setTimeout(() => checkProviders(), 500);
+  const saveConfig = async (id: ProviderID, partial: Partial<ProviderConfig>) => {
+    if (!configs) return;
+    const updated = {
+      ...configs,
+      [id]: { ...configs[id], ...partial },
+    };
+    setConfigs(updated);
+    setSaving(id);
+    try {
+      await saveProviderConfigs(updated);
+      await checkProviders();
+    } catch (err) {
+      console.error("Save config failed:", err);
+    } finally {
       setSaving(null);
-    },
-    [configs, checkProviders]
-  );
+    }
+  };
 
   if (!configs) {
-    return (
-      <div className="p-4 text-center text-gray-500 text-sm">Loading...</div>
-    );
+    return <div className="p-4 text-xs font-mono text-gray-500">Loading AI provider configuration...</div>;
   }
 
-  // Find active provider
   const activeProvider = statuses.find((s) => s.available);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 font-sans">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-white">AI Providers</h2>
-          <p className="text-[11px] text-gray-500 mt-0.5">
-            Configure which LLM powers the agent
-          </p>
+          <h2 className="text-xs font-semibold text-white font-mono uppercase tracking-wider">AI Providers</h2>
+          <p className="text-[10px] text-gray-400 font-light">Configure LLM planners for browser automation.</p>
         </div>
         <button
           onClick={checkProviders}
           disabled={checking}
-          className="text-[11px] px-2 py-1 bg-gray-800 text-gray-400 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+          className="hallmark-button text-[10px] px-2.5 py-1 font-mono uppercase text-gray-300 hover:text-white"
         >
-          {checking ? "Checking..." : "Refresh"}
+          {checking ? "Testing..." : "Test Providers"}
         </button>
       </div>
 
-      {/* Active Provider Badge */}
-      {activeProvider && (
-        <div className="bg-green-900/30 border border-green-800/50 rounded-lg p-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span className="text-xs text-green-300 font-medium">
-              Active: {activeProvider.name}
-            </span>
-            <span className="text-[10px] text-green-500">
-              {activeProvider.model}
-            </span>
-          </div>
+      {/* Active Banner */}
+      <div className="hallmark-card p-3 border-emerald-500/20 bg-emerald-500/5 font-mono text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-gray-400 uppercase tracking-widest">Active Planner</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-400 text-black font-semibold uppercase">
+            {activeProvider ? activeProvider.name : "None Available"}
+          </span>
         </div>
-      )}
+        {activeProvider && (
+          <p className="text-[10px] text-gray-300 mt-1 font-light">
+            Model: <span className="font-mono text-white">{activeProvider.model}</span> ({activeProvider.latencyMs.toFixed(0)}ms)
+          </p>
+        )}
+      </div>
 
-      {/* Provider List */}
+      {/* Providers List */}
       <div className="space-y-2">
         {(Object.keys(PROVIDER_INFO) as ProviderID[]).map((id) => {
           const info = PROVIDER_INFO[id];
@@ -238,33 +220,23 @@ export function ProviderSettings() {
           const isExpanded = expandedId === id;
 
           return (
-            <div
-              key={id}
-              className={`border rounded-lg transition-colors ${
-                status?.available
-                  ? "border-green-800/50 bg-green-950/20"
-                  : "border-gray-800 bg-gray-900"
-              }`}
-            >
-              {/* Provider Header */}
+            <div key={id} className="hallmark-card overflow-hidden">
               <button
                 onClick={() => setExpandedId(isExpanded ? null : id)}
-                className="w-full flex items-center justify-between p-3 text-left"
+                className="w-full flex items-center justify-between p-3 text-left hover:bg-[#141722] transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-2 h-2 rounded-full ${
+                <div className="flex items-center gap-2 font-mono">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
                       status?.available
-                        ? "bg-green-400"
+                        ? "bg-emerald-400"
                         : config.enabled
-                          ? "bg-yellow-400"
+                          ? "bg-amber-400"
                           : "bg-gray-600"
                     }`}
                   />
                   <div>
-                    <span className="text-xs font-medium text-white">
-                      {info.name}
-                    </span>
+                    <span className="text-xs font-semibold text-gray-200">{info.name}</span>
                     <span className="text-[10px] text-gray-500 ml-2">
                       {config.model || info.defaultModel}
                     </span>
@@ -272,77 +244,63 @@ export function ProviderSettings() {
                 </div>
                 <div className="flex items-center gap-2">
                   {config.enabled && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded">
-                      ON
+                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+                      Enabled
                     </span>
                   )}
-                  <span className="text-gray-500 text-xs">
-                    {isExpanded ? "^" : "v"}
-                  </span>
+                  <span className="text-gray-500 text-xs font-mono">{isExpanded ? "▲" : "▼"}</span>
                 </div>
               </button>
 
-              {/* Expanded Config */}
               {isExpanded && (
-                <div className="px-3 pb-3 space-y-3 border-t border-gray-800">
-                  <p className="text-[11px] text-gray-500 mt-2">
-                    {info.description}
-                  </p>
+                <div className="p-3 space-y-3 border-t border-[#1e2233] bg-[#0f1118] font-sans">
+                  <p className="text-[11px] text-gray-400 font-light">{info.description}</p>
 
-                  {/* Enable Toggle */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-400">Enabled</span>
+                  <div className="flex items-center justify-between font-mono text-xs">
+                    <span className="text-gray-400 uppercase text-[10px]">Enable Provider</span>
                     <button
                       onClick={() => saveConfig(id, { enabled: !config.enabled })}
-                      className={`w-10 h-5 rounded-full transition-colors ${
-                        config.enabled ? "bg-green-600" : "bg-gray-700"
+                      className={`w-9 h-5 rounded-full transition-colors relative ${
+                        config.enabled ? "bg-emerald-500" : "bg-gray-700"
                       }`}
                     >
                       <div
-                        className={`w-4 h-4 bg-white rounded-full transition-transform ${
-                          config.enabled ? "translate-x-5" : "translate-x-0.5"
+                        className={`w-3.5 h-3.5 bg-white rounded-full transition-transform absolute top-0.75 ${
+                          config.enabled ? "left-4.5" : "left-0.75"
                         }`}
                       />
                     </button>
                   </div>
 
-                  {/* API Key (for cloud providers) */}
                   {info.needsKey && (
-                    <div>
-                      <label className="text-[11px] text-gray-400 block mb-1">
-                        API Key
-                      </label>
-                      <div className="flex gap-1">
+                    <div className="space-y-1 font-mono">
+                      <label className="text-[10px] text-gray-400 uppercase tracking-widest block">API Key</label>
+                      <div className="flex gap-1.5">
                         <input
                           type="password"
                           value={config.apiKey || ""}
-                          onChange={(e) =>
-                            saveConfig(id, { apiKey: e.target.value })
-                          }
+                          onChange={(e) => saveConfig(id, { apiKey: e.target.value })}
                           placeholder="sk-..."
-                          className="flex-1 text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-gray-200 focus:border-blue-500 focus:outline-none"
+                          className="flex-1 text-xs font-mono hallmark-input px-2.5 py-1 text-gray-200 focus:outline-none"
                         />
                         <a
                           href={info.setupUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] px-2 py-1 bg-gray-800 text-gray-400 hover:text-gray-200 rounded whitespace-nowrap"
+                          className="hallmark-button text-[10px] px-2.5 py-1 text-gray-400 hover:text-white uppercase shrink-0"
                         >
-                          Get Key
+                          Get Key ↗
                         </a>
                       </div>
                     </div>
                   )}
 
-                  {/* Model Selection */}
-                  <div>
-                    <label className="text-[11px] text-gray-400 block mb-1">
-                      Model
-                    </label>
+                  <div className="space-y-1 font-mono">
+                    <label className="text-[10px] text-gray-400 uppercase tracking-widest block">Model Selection</label>
                     <select
                       value={config.model || info.defaultModel}
                       onChange={(e) => saveConfig(id, { model: e.target.value })}
-                      className="w-full text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-gray-200 focus:border-blue-500 focus:outline-none"
+                      className="w-full text-xs font-mono hallmark-input px-2.5 py-1 text-gray-200 focus:outline-none"
                     >
                       {info.models.map((m) => (
                         <option key={m} value={m}>
@@ -352,71 +310,23 @@ export function ProviderSettings() {
                     </select>
                   </div>
 
-                  {/* Base URL (for custom endpoints) */}
-                  {config.baseUrl && (
-                    <div>
-                      <label className="text-[11px] text-gray-400 block mb-1">
-                        Base URL
-                      </label>
-                      <input
-                        type="text"
-                        value={config.baseUrl}
-                        onChange={(e) => saveConfig(id, { baseUrl: e.target.value })}
-                        className="w-full text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-gray-200 focus:border-blue-500 focus:outline-none font-mono"
-                      />
-                    </div>
-                  )}
-
-                  {/* Status */}
-                  {status && (
-                    <div className="text-[10px] text-gray-500">
-                      {status.available ? (
-                        <span className="text-green-500">
-                          Connected ({status.latencyMs.toFixed(0)}ms)
-                        </span>
-                      ) : (
-                        <span className="text-red-400">
-                          {status.error || "Not available"}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Setup Instructions for Ollama */}
                   {id === "ollama" && !status?.available && (
-                    <div className="bg-gray-800/50 rounded p-2 text-[10px] text-gray-400 space-y-1">
-                      <p className="font-medium text-gray-300">Quick setup:</p>
-                      <code className="block bg-gray-900 rounded p-1.5 font-mono text-green-400">
+                    <div className="hallmark-card p-2.5 text-[10px] font-mono text-gray-400 space-y-1 bg-[#12141d]">
+                      <p className="text-gray-300 font-semibold uppercase">Ollama Setup Command:</p>
+                      <code className="block bg-[#090a0f] p-2 rounded text-emerald-400 text-xs">
                         ollama pull qwen2.5:1.5b
                       </code>
-                      <p>
-                        Download Ollama:{" "}
-                        <a
-                          href={info.setupUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-400 hover:underline"
-                        >
-                          ollama.ai/download
-                        </a>
-                      </p>
                     </div>
                   )}
 
                   {saving === id && (
-                    <span className="text-[10px] text-blue-400">Saving...</span>
+                    <span className="text-[10px] font-mono text-sky-400">Saving changes...</span>
                   )}
                 </div>
               )}
             </div>
           );
         })}
-      </div>
-
-      {/* Priority Order */}
-      <div className="text-[10px] text-gray-600 space-y-1">
-        <p>Priority: a configured cloud provider (Claude &gt; OpenAI &gt; OpenRouter) is used first; Ollama (local) is the fallback. With no cloud key set, everything stays local (Ollama first).</p>
-        <p>The first available provider is used automatically.</p>
       </div>
     </div>
   );

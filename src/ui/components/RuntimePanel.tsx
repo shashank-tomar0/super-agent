@@ -1,11 +1,3 @@
-// ============================================================
-// VLESS — Runtime Panel
-// Surfaces the on-device ML runtime to the user: detected hardware
-// tier, per-model load/cache state, live download progress, and a
-// one-click warm-up. This is the visible end of the SW → offscreen
-// → backend-detect → Cache-API loader → progress-stream chain.
-// ============================================================
-
 import { useCallback, useEffect, useState } from "react";
 import { onModelProgress } from "../../core/runtime/messaging";
 import type {
@@ -33,22 +25,22 @@ function fmtBytes(n: number): string {
 }
 
 const TIER_META: Record<string, { label: string; cls: string }> = {
-  A: { label: "GPU accelerated", cls: "bg-emerald-600/20 text-emerald-300 border-emerald-600/40" },
-  B: { label: "CPU · SIMD", cls: "bg-sky-600/20 text-sky-300 border-sky-600/40" },
-  C: { label: "CPU baseline", cls: "bg-amber-600/20 text-amber-300 border-amber-600/40" },
+  A: { label: "GPU Accelerated", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  B: { label: "CPU SIMD", cls: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
+  C: { label: "CPU Baseline", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
 };
 
 const STATE_META: Record<
   ModelStatus["state"],
   { label: string; dot: string; text: string }
 > = {
-  ready: { label: "ready", dot: "bg-emerald-400", text: "text-emerald-300" },
-  cached: { label: "cached", dot: "bg-emerald-400", text: "text-emerald-300" },
-  downloading: { label: "downloading", dot: "bg-sky-400 animate-pulse", text: "text-sky-300" },
-  loading: { label: "loading", dot: "bg-sky-400 animate-pulse", text: "text-sky-300" },
-  not_loaded: { label: "not loaded", dot: "bg-gray-600", text: "text-gray-400" },
-  skipped: { label: "later phase", dot: "bg-gray-700", text: "text-gray-500" },
-  error: { label: "error", dot: "bg-red-500", text: "text-red-300" },
+  ready: { label: "Ready", dot: "bg-emerald-400", text: "text-emerald-400" },
+  cached: { label: "Cached", dot: "bg-emerald-400", text: "text-emerald-400" },
+  downloading: { label: "Downloading", dot: "bg-sky-400 animate-pulse", text: "text-sky-300" },
+  loading: { label: "Loading", dot: "bg-sky-400 animate-pulse", text: "text-sky-300" },
+  not_loaded: { label: "Not Loaded", dot: "bg-gray-600", text: "text-gray-500" },
+  skipped: { label: "Later Phase", dot: "bg-gray-700", text: "text-gray-600" },
+  error: { label: "Error", dot: "bg-rose-500", text: "text-rose-400" },
 };
 
 export function RuntimePanel() {
@@ -73,7 +65,6 @@ export function RuntimePanel() {
 
   useEffect(() => {
     void refresh();
-    // Live-patch rows as the offscreen host streams progress.
     const off = onModelProgress((p: ModelProgress) => {
       setStatuses((prev) =>
         prev.map((s) =>
@@ -109,87 +100,82 @@ export function RuntimePanel() {
     .map((s) => s.id);
 
   return (
-    <div className="p-4 space-y-4">
-      {/* ── Backend / tier card ── */}
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
-            On-Device Runtime
+    <div className="space-y-4 font-sans">
+      {/* Backend Hardware Profile Card */}
+      <div className="hallmark-card p-3.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold text-white font-mono uppercase tracking-wider">
+            Hardware Execution Profile
           </h2>
           <button
             onClick={() => void refresh()}
-            className="text-[10px] px-2 py-1 bg-gray-800 text-gray-400 hover:bg-gray-700 rounded transition-colors"
+            className="hallmark-button text-[10px] px-2 py-0.5 font-mono uppercase text-gray-300"
           >
-            ↻ Refresh
+            Refresh
           </button>
         </div>
 
         {backend ? (
-          <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="space-y-2 font-mono">
+            <div className="flex items-center gap-2">
               <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded border ${
+                className={`text-[9px] font-mono px-2 py-0.5 rounded border uppercase ${
                   TIER_META[backend.tier]?.cls ?? ""
                 }`}
               >
                 Tier {backend.tier}
               </span>
-              <span className="text-[11px] text-gray-400">
+              <span className="text-[11px] text-gray-300">
                 {TIER_META[backend.tier]?.label}
               </span>
             </div>
-            <p className="text-[11px] text-gray-500 font-mono leading-relaxed">
+            <p className="text-[10px] text-gray-400 leading-relaxed font-light">
               {backend.summary}
             </p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 pt-1">
               <Cap on={backend.webgpu} label="WebGPU" />
               <Cap on={backend.wasmSimd} label="WASM SIMD" />
               <Cap on={backend.wasmThreads} label="Threads" />
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-[11px] text-gray-500">
-            Detecting backend…
+          <div className="text-[11px] text-gray-500 font-mono">
+            Detecting hardware runtime profile...
           </div>
         )}
-      </section>
+      </div>
 
-      {/* ── Warm-up actions ── */}
-      <section className="flex gap-2">
+      {/* Warm-Up Action Buttons */}
+      <div className="flex gap-2 font-mono">
         <button
           disabled={busy || ocrIds.length === 0}
           onClick={() => void warm(ocrIds)}
-          className="flex-1 text-[11px] py-2 rounded bg-blue-600/80 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-colors"
+          className="flex-1 hallmark-button-primary text-[10px] py-2 uppercase disabled:opacity-40"
         >
-          {busy ? "Working…" : "Warm OCR models"}
+          {busy ? "Warming..." : "Warm OCR Engine"}
         </button>
         <button
           disabled={busy || allEligible.length === 0}
           onClick={() => void warm(allEligible)}
-          className="flex-1 text-[11px] py-2 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 font-medium transition-colors"
+          className="flex-1 hallmark-button text-[10px] py-2 uppercase text-gray-300 hover:text-white disabled:opacity-40"
         >
-          Warm all eligible
+          Warm All Eligible
         </button>
-      </section>
+      </div>
 
       {error && (
-        <p className="text-[11px] text-red-300 bg-red-950/40 border border-red-800/40 rounded px-2 py-1.5">
+        <div className="hallmark-card p-2.5 border-rose-500/30 bg-rose-500/5 text-xs text-rose-300 font-mono">
           {error}
-        </p>
+        </div>
       )}
 
-      {/* ── Model list ── */}
-      <section className="space-y-2">
+      {/* ONNX Models Inventory */}
+      <div className="space-y-2 font-mono">
+        <span className="text-[10px] text-gray-500 uppercase tracking-widest block font-medium">On-Device Vision Models</span>
         {statuses.map((s) => (
           <ModelRow key={s.id} s={s} />
         ))}
-      </section>
-
-      <p className="text-[10px] text-gray-600 leading-relaxed">
-        Models are fetched once and cached on-device (Cache API). Nothing here
-        leaves your machine. Heavy models (Florence-2, GLiNER, WebLLM) initialize
-        in later stages and appear as “later phase”.
-      </p>
+      </div>
     </div>
   );
 }
@@ -197,13 +183,13 @@ export function RuntimePanel() {
 function Cap({ on, label }: { on: boolean; label: string }) {
   return (
     <span
-      className={`text-[10px] px-1.5 py-0.5 rounded border ${
+      className={`text-[9px] font-mono px-2 py-0.5 rounded border uppercase ${
         on
-          ? "border-emerald-600/40 text-emerald-300 bg-emerald-600/10"
-          : "border-gray-700 text-gray-600 bg-gray-800/40"
+          ? "border-emerald-500/20 text-emerald-400 bg-emerald-500/10"
+          : "border-gray-800 text-gray-600 bg-[#12141d]"
       }`}
     >
-      {on ? "✓" : "✕"} {label}
+      {on ? "PASS" : "OFF"} {label}
     </span>
   );
 }
@@ -214,32 +200,28 @@ function ModelRow({ s }: { s: ModelStatus }) {
   const showBar = s.state === "downloading" || s.state === "loading";
 
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-2.5">
+    <div className="hallmark-card p-2.5 space-y-1">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
-          <span className="text-[11px] text-gray-200 truncate">{s.name}</span>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
+          <span className="text-xs text-gray-200 truncate font-semibold">{s.name}</span>
         </div>
-        <span className={`text-[10px] shrink-0 ${meta.text}`}>{meta.label}</span>
+        <span className={`text-[10px] font-mono shrink-0 uppercase ${meta.text}`}>{meta.label}</span>
       </div>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-[10px] text-gray-600">{fmtBytes(s.sizeBytes)}</span>
-        {s.required && (
-          <span className="text-[9px] text-gray-500 uppercase tracking-wide">
-            required
-          </span>
-        )}
+      <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono">
+        <span>{fmtBytes(s.sizeBytes)}</span>
+        {s.required && <span className="uppercase text-gray-400">Required</span>}
       </div>
       {showBar && (
-        <div className="mt-1.5 h-1 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-1 bg-[#181b28] rounded overflow-hidden border border-[#25293c]">
           <div
-            className="h-full bg-sky-500 transition-all duration-200"
+            className="h-full bg-sky-400 transition-all duration-200"
             style={{ width: `${pct}%` }}
           />
         </div>
       )}
       {s.error && (
-        <p className="mt-1 text-[10px] text-red-400 truncate" title={s.error}>
+        <p className="text-[10px] text-rose-400 truncate" title={s.error}>
           {s.error}
         </p>
       )}

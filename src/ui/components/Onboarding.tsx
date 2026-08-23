@@ -6,39 +6,34 @@ interface OnboardingProps {
 
 const STEPS = [
   {
-    icon: "🐾",
     title: "Welcome to VLESS",
     description:
-      "A privacy-preserving browser agent that sees your screen, understands your intent, and automates web tasks — without sending a single pixel to the cloud.",
-    color: "from-blue-600 to-purple-600",
+      "A privacy-preserving browser agent that perceives your screen, understands your intent, and fills forms — without sending a single pixel to the cloud.",
+    badge: "0 KB Egress",
   },
   {
-    icon: "🔒",
-    title: "100% On-Device",
+    title: "100% On-Device Perception",
     description:
-      "Every AI model runs in your browser. Screenshots never leave your device. Form data stays local. Zero network requests during operation.",
-    color: "from-green-600 to-emerald-600",
+      "Every vision model (PP-OCR, Florence-2 ViT) runs locally inside WebGPU/WASM. Screenshots never leave your browser memory.",
+    badge: "Local WASM / WebGPU",
   },
   {
-    icon: "🧠",
-    title: "Connect an AI Provider",
+    title: "Connect AI Provider",
     description:
-      "VLESS needs an LLM to understand your requests. Choose one:\n\n• Ollama (free, local) — install Ollama + pull qwen2.5:1.5b\n• Claude / OpenAI / OpenRouter — paste your API key\n\nTakes 30 seconds. Without this, only basic rules work.",
-    color: "from-purple-600 to-pink-600",
+      "VLESS connects to Ollama (free local execution) or cloud planners (Claude, OpenAI, OpenRouter) with device-encrypted key storage.",
+    badge: "Multi-Provider Planner",
   },
   {
-    icon: "👁️",
-    title: "Visual Debug",
+    title: "Real-Time Visual Debug",
     description:
-      "See exactly what the agent perceives — bounding boxes, confidence scores, and a full reasoning trace. Complete transparency.",
-    color: "from-orange-600 to-red-600",
+      "Inspect bounding boxes, confidence metrics, and full reasoning traces for complete auditability.",
+    badge: "DevTools Verifiable",
   },
   {
-    icon: "⚡",
-    title: "Ready to Go",
+    title: "Ready to Automate",
     description:
-      "Click the extension icon to open the side panel. Describe any task in natural language and the AI will plan and execute it. Try: 'Fill this form with my data'.",
-    color: "from-cyan-600 to-blue-600",
+      "Open the side panel on any website, state your goal in natural language, and let VLESS safely plan and execute.",
+    badge: "Ready",
   },
 ];
 
@@ -65,67 +60,62 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-gray-950 transition-opacity duration-300 ${
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-[#090a0f] transition-opacity duration-300 font-sans ${
         isExiting ? "opacity-0" : "opacity-100"
       }`}
     >
-      {/* Background gradient */}
-      <div
-        className={`absolute inset-0 bg-gradient-to-br ${step.color} opacity-10 transition-all duration-500`}
-      />
-
-      <div className="relative max-w-sm w-full mx-4">
-        {/* Skip button */}
+      <div className="relative max-w-sm w-full mx-4 hallmark-card p-6 border-[#222636] space-y-6">
         {!isLast && (
           <button
             onClick={handleSkip}
-            className="absolute -top-12 right-0 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            className="absolute top-4 right-4 text-[10px] font-mono uppercase text-gray-500 hover:text-white transition-colors"
           >
-            Skip →
+            Skip
           </button>
         )}
 
-        {/* Step content */}
-        <div className="text-center">
-          {/* Icon */}
-          <div className="text-6xl mb-6 animate-bounce">{step.icon}</div>
-
-          {/* Title */}
-          <h1 className="text-xl font-bold text-white mb-3">{step.title}</h1>
-
-          {/* Description */}
-          <p className="text-sm text-gray-400 leading-relaxed mb-8">
-            {step.description}
-          </p>
-
-          {/* Progress dots */}
-          <div className="flex justify-center gap-2 mb-6">
-            {STEPS.map((_, i) => (
-              <div
-                key={i}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  i === currentStep
-                    ? "w-6 bg-white"
-                    : i < currentStep
-                      ? "w-1.5 bg-white/50"
-                      : "w-1.5 bg-gray-700"
-                }`}
-              />
-            ))}
+        <div className="space-y-3 text-center">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-mono uppercase font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
+            {step.badge}
           </div>
 
-          {/* Next button */}
-          <button
-            onClick={handleNext}
-            className={`w-full py-3 rounded-xl font-medium text-sm transition-all duration-200 ${
-              isLast
-                ? "bg-white text-gray-900 hover:bg-gray-100"
-                : "bg-gray-800 text-white hover:bg-gray-700 border border-gray-700"
-            }`}
-          >
-            {isLast ? "Get Started 🚀" : "Next →"}
-          </button>
+          <h1 className="text-3xl text-white font-serif-title tracking-tight leading-tight">
+            {step.title}
+          </h1>
+
+          <p className="text-xs text-gray-400 font-light leading-relaxed">
+            {step.description}
+          </p>
         </div>
+
+        {/* Progress bar dots */}
+        <div className="flex justify-center gap-1.5">
+          {STEPS.map((_, i) => (
+            <div
+              key={i}
+              className={`h-1 rounded transition-all duration-300 ${
+                i === currentStep
+                  ? "w-6 bg-white"
+                  : i < currentStep
+                    ? "w-1.5 bg-gray-500"
+                    : "w-1.5 bg-gray-800"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Action Button */}
+        <button
+          onClick={handleNext}
+          className={`w-full py-2.5 text-xs font-mono uppercase font-semibold transition-all ${
+            isLast
+              ? "hallmark-button-primary"
+              : "hallmark-button text-gray-200 hover:text-white"
+          }`}
+        >
+          {isLast ? "Setup AI Provider" : "Continue"}
+        </button>
       </div>
     </div>
   );

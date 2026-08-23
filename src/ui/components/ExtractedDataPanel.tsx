@@ -1,14 +1,3 @@
-// ============================================================
-// VLESS — Extracted Data Panel
-//
-// Renders the result of a read/extract task.
-//
-// Values are shown as they are. This is the user looking at their own
-// page on their own machine; hiding it from them would defeat the point
-// of extracting it. Masking is a toggle for screen-sharing, and the JSON
-// export follows whatever is currently on screen.
-// ============================================================
-
 import { useState } from "react";
 import type { ExtractedData } from "../../core/extraction/page-extractor";
 import { extractedDataToJSON } from "../../core/extraction/page-extractor";
@@ -18,11 +7,6 @@ interface Props {
 }
 
 export function ExtractedDataPanel({ data }: Props) {
-  // Real values by default. This panel renders on the user's own machine,
-  // showing them their own data — masking it back at them is theatre, and it
-  // makes the values impossible to check, which is this panel's whole job.
-  // The privacy guarantee is about what LEAVES the device, not what the owner
-  // can see. The toggle exists for screen-sharing and projected demos.
   const [revealed, setRevealed] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -40,76 +24,69 @@ export function ExtractedDataPanel({ data }: Props) {
   const { summary } = data;
 
   return (
-    <div className="mx-4 mt-4 space-y-3">
+    <div className="space-y-3 font-sans">
       {/* Header */}
-      <div className="p-3 bg-blue-900/20 rounded-lg border border-blue-800/30">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-blue-400">📊</span>
-          <span className="text-xs font-medium text-blue-300">Extracted Data</span>
+      <div className="hallmark-card p-3.5 space-y-1">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <span className="text-xs font-semibold text-white font-mono uppercase tracking-wider">Extracted Data</span>
+          </div>
+          <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            On-Device Read
+          </span>
         </div>
         <p className="text-[11px] text-gray-400 truncate" title={data.title}>
           {data.title || data.url}
         </p>
-        <p className="text-[10px] text-gray-500 mt-1">
-          {summary.fieldCount} fields · {summary.filledFieldCount} filled ·{" "}
-          {summary.maskedFieldCount} sensitive · extracted on-device
-        </p>
+        <div className="flex items-center gap-3 text-[10px] text-gray-500 font-mono pt-1">
+          <span>{summary.fieldCount} fields</span>
+          <span>•</span>
+          <span>{summary.filledFieldCount} filled</span>
+          <span>•</span>
+          <span>{summary.maskedFieldCount} sensitive</span>
+        </div>
       </div>
 
-      {/* Controls */}
+      {/* Control Strip */}
       <div className="flex flex-wrap gap-2">
         {summary.maskedFieldCount > 0 && (
           <button
             onClick={() => setRevealed((r) => !r)}
-            className="text-[10px] px-2 py-1 bg-gray-900 border border-gray-700 rounded hover:border-gray-500 text-gray-300 transition-colors"
+            className="hallmark-button text-[10px] px-2.5 py-1 font-mono uppercase text-gray-300"
           >
-            {revealed ? "🙈 Mask for sharing" : "👁️ Show real values"}
+            {revealed ? "Mask Sensitivity" : "Show Raw Values"}
           </button>
         )}
-        {/* Copying matches what is on screen — no surprise mismatch
-            between what the user sees and what lands on the clipboard. */}
         <button
           onClick={() => copyJSON(revealed)}
-          className="text-[10px] px-2 py-1 bg-gray-900 border border-gray-700 rounded hover:border-gray-500 text-gray-300 transition-colors"
+          className="hallmark-button text-[10px] px-2.5 py-1 font-mono uppercase text-gray-300 flex items-center gap-1.5"
         >
-          {copied ? "✅ Copied" : revealed ? "📋 Copy JSON" : "📋 Copy JSON (masked)"}
+          <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          {copied ? "Copied to Clipboard" : revealed ? "Copy JSON" : "Copy JSON (Masked)"}
         </button>
-        {revealed && summary.maskedFieldCount > 0 && (
-          <button
-            onClick={() => copyJSON(false)}
-            className="text-[10px] px-2 py-1 bg-gray-900 border border-gray-700 rounded hover:border-gray-500 text-gray-400 transition-colors"
-          >
-            Copy masked instead
-          </button>
-        )}
       </div>
 
-      <p className="text-[10px] text-gray-500 leading-relaxed">
-        Read from the page on this device. Nothing was transmitted to produce
-        this view.
-      </p>
-
-      {/* Sections */}
+      {/* Structured Sections Table */}
       {data.sections.map((section, si) => (
-        <div
-          key={`${section.title}-${si}`}
-          className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden"
-        >
-          <div className="px-3 py-2 bg-gray-800/50 border-b border-gray-800">
-            <span className="text-[11px] font-medium text-gray-300">{section.title}</span>
-            <span className="text-[10px] text-gray-500 ml-2">
-              {section.fields.length} fields
-            </span>
+        <div key={`${section.title}-${si}`} className="hallmark-card overflow-hidden">
+          <div className="px-3 py-2 bg-[#141722] border-b border-[#1e2233] flex items-center justify-between font-mono">
+            <span className="text-[11px] font-semibold text-gray-200 uppercase tracking-wider">{section.title}</span>
+            <span className="text-[9px] text-gray-500">{section.fields.length} FIELDS</span>
           </div>
-          <div className="divide-y divide-gray-800/50">
+          <div className="divide-y divide-[#181b28]">
             {section.fields.map((field, fi) => (
-              <div key={`${field.label}-${fi}`} className="px-3 py-2 flex gap-3">
-                <span className="text-[10px] text-gray-500 w-1/3 shrink-0 break-words">
+              <div key={`${field.label}-${fi}`} className="px-3 py-2 flex items-start justify-between gap-3 text-xs">
+                <span className="text-[11px] text-gray-400 w-1/3 shrink-0 font-light truncate">
                   {field.label}
                 </span>
-                <span className="text-[11px] text-gray-200 flex-1 break-all font-mono">
+                <span className="text-[11px] text-gray-200 flex-1 font-mono break-all text-right">
                   {field.value === "" ? (
-                    <span className="text-gray-600 italic font-sans">empty</span>
+                    <span className="text-gray-600 italic">empty</span>
                   ) : revealed && field.rawValue !== undefined ? (
                     field.rawValue
                   ) : (
@@ -117,7 +94,7 @@ export function ExtractedDataPanel({ data }: Props) {
                   )}
                 </span>
                 {field.piiCategory && (
-                  <span className="text-[9px] px-1.5 py-0.5 h-fit bg-red-900/30 text-red-300 rounded border border-red-800/40 shrink-0">
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 uppercase shrink-0">
                     {field.piiCategory}
                   </span>
                 )}
@@ -126,12 +103,6 @@ export function ExtractedDataPanel({ data }: Props) {
           </div>
         </div>
       ))}
-
-      {data.sections.length === 0 && (
-        <p className="text-[11px] text-gray-500 italic">
-          No structured data found on this page.
-        </p>
-      )}
     </div>
   );
 }

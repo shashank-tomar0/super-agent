@@ -1,16 +1,3 @@
-// ============================================================
-// VLESS — Detected PII Results
-//
-// Shows the user exactly what was found and protected on their page
-// after any task, not just extraction. The pipeline reported "22 PII
-// detected" as a bare number with no way to see what those 22 were.
-//
-// Values are shown in full — this is the user's own data on their own
-// screen, and the point is that they can check it. Masking is a toggle
-// for screen-sharing. Nothing here was ever transmitted; these regions
-// are exactly what the sanitizer stripped before any provider saw it.
-// ============================================================
-
 import { useState } from "react";
 import type { PIIRegion } from "../../core/privacy/pii-detector";
 
@@ -19,10 +6,10 @@ interface Props {
 }
 
 const SENSITIVITY_STYLE: Record<string, string> = {
-  critical: "bg-red-900/30 text-red-300 border-red-800/40",
-  high: "bg-orange-900/30 text-orange-300 border-orange-800/40",
-  medium: "bg-yellow-900/30 text-yellow-300 border-yellow-800/40",
-  low: "bg-gray-800 text-gray-400 border-gray-700",
+  critical: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  high: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  medium: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+  low: "bg-gray-500/10 text-gray-400 border-gray-500/20",
 };
 
 function maskValue(value: string): string {
@@ -32,15 +19,9 @@ function maskValue(value: string): string {
 }
 
 export function PIIResultsPanel({ regions }: Props) {
-  // Real values by default. This panel renders on the user's own machine,
-  // showing them their own data — masking it back at them is theatre, and it
-  // makes the values impossible to check, which is this panel's whole job.
-  // The privacy guarantee is about what LEAVES the device, not what the owner
-  // can see. The toggle exists for screen-sharing and projected demos.
   const [revealed, setRevealed] = useState(true);
   const [expanded, setExpanded] = useState(true);
 
-  // Group by category so a 22-region result reads as a handful of rows.
   const byCategory = new Map<string, PIIRegion[]>();
   for (const region of regions) {
     const list = byCategory.get(region.category) ?? [];
@@ -52,23 +33,25 @@ export function PIIResultsPanel({ regions }: Props) {
   const criticalCount = regions.filter((r) => r.sensitivity === "critical").length;
 
   return (
-    <div className="mx-4 mt-4 space-y-2">
-      <div className="p-3 bg-red-900/10 rounded-lg border border-red-900/30">
+    <div className="space-y-2 font-sans">
+      {/* Header Banner */}
+      <div className="hallmark-card p-3 border-rose-500/20 bg-rose-500/5">
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="w-full flex items-center justify-between"
+          className="w-full flex items-center justify-between font-mono"
         >
           <div className="flex items-center gap-2">
-            <span className="text-red-400">🔒</span>
-            <span className="text-xs font-medium text-red-200">
-              {regions.length} PII regions protected
+            <svg className="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <span className="text-xs font-semibold text-rose-300 uppercase tracking-wider">
+              {regions.length} PII Regions Protected
             </span>
           </div>
           <span className="text-[10px] text-gray-500">{expanded ? "▼" : "▶"}</span>
         </button>
-        <p className="text-[10px] text-gray-500 mt-1 text-left">
-          {criticalCount} critical · {byCategory.size} categories · none of this
-          left your device
+        <p className="text-[10px] text-gray-400 mt-1 font-mono text-left">
+          {criticalCount} critical · {byCategory.size} categories · 0 KB outbound egress
         </p>
       </div>
 
@@ -77,44 +60,41 @@ export function PIIResultsPanel({ regions }: Props) {
           {withValues.length > 0 && (
             <button
               onClick={() => setRevealed((r) => !r)}
-              className="text-[10px] px-2 py-1 bg-gray-900 border border-gray-700 rounded hover:border-gray-500 text-gray-300 transition-colors"
+              className="hallmark-button text-[10px] px-2.5 py-1 font-mono uppercase text-gray-300"
             >
-              {revealed ? "🙈 Mask for sharing" : `👁️ Show ${withValues.length} values`}
+              {revealed ? "Mask Values for Sharing" : `Show ${withValues.length} Values`}
             </button>
           )}
 
           {[...byCategory.entries()].map(([category, items]) => (
-            <div
-              key={category}
-              className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden"
-            >
-              <div className="px-3 py-1.5 bg-gray-800/50 border-b border-gray-800 flex items-center justify-between">
-                <span className="text-[11px] font-medium text-gray-300">{category}</span>
+            <div key={category} className="hallmark-card overflow-hidden">
+              <div className="px-3 py-1.5 bg-[#141722] border-b border-[#1e2233] flex items-center justify-between font-mono">
+                <span className="text-[11px] font-semibold text-gray-200 uppercase tracking-wider">{category}</span>
                 <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                  className={`text-[9px] font-mono px-1.5 py-0.5 rounded border uppercase ${
                     SENSITIVITY_STYLE[items[0].sensitivity] ?? SENSITIVITY_STYLE.low
                   }`}
                 >
                   {items[0].sensitivity}
                 </span>
               </div>
-              <div className="divide-y divide-gray-800/50">
+              <div className="divide-y divide-[#181b28]">
                 {items.map((region, i) => (
-                  <div key={`${region.id}-${i}`} className="px-3 py-1.5">
-                    <div className="flex items-start gap-2">
+                  <div key={`${region.id}-${i}`} className="px-3 py-2 space-y-0.5">
+                    <div className="flex items-start justify-between gap-2">
                       <span className="text-[11px] text-gray-200 font-mono break-all flex-1">
                         {region.textValue
                           ? revealed
                             ? region.textValue
                             : maskValue(region.textValue)
-                          : <span className="text-gray-600 italic font-sans">field flagged, no value</span>}
+                          : <span className="text-gray-500 italic">Field flagged (no value)</span>}
                       </span>
-                      <span className="text-[9px] text-gray-600 shrink-0">
+                      <span className="text-[9px] text-gray-500 font-mono shrink-0">
                         {Math.round(region.confidence * 100)}%
                       </span>
                     </div>
-                    <p className="text-[9px] text-gray-600 mt-0.5">
-                      {region.detectionMethod}
+                    <p className="text-[9px] text-gray-500 font-mono">
+                      Method: {region.detectionMethod}
                     </p>
                   </div>
                 ))}
