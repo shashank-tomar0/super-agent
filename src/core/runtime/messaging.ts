@@ -70,8 +70,16 @@ export async function callOffscreen<M extends OffscreenMethodName>(
 ): Promise<OffscreenMethods[M]["result"]> {
   await ensureOffscreenDocument();
   const req: RpcRequest<M> = { channel: RPC_CHANNEL, id: nextRpcId(), method, params };
-  const res = (await chrome.runtime.sendMessage(req)) as RpcResponse<M> | undefined;
-  if (!res) throw new Error(`offscreen: no response for "${method}"`);
+  let res = (await chrome.runtime.sendMessage(req)) as RpcResponse<M> | undefined;
+
+  // BUG-08 FIX: undefined response means the offscreen doc listener wasn't
+  // ready yet (race on SW restart). Wait briefly and retry once before failing.
+  if (!res) {
+    await new Promise((r) => setTimeout(r, 500));
+    res = (await chrome.runtime.sendMessage(req)) as RpcResponse<M> | undefined;
+  }
+
+  if (!res) throw new Error(`offscreen: no response for "${method}" — offscreen doc may not be ready`);
   if (!res.ok) throw new Error(res.error || `offscreen "${method}" failed`);
   return res.result as OffscreenMethods[M]["result"];
 }

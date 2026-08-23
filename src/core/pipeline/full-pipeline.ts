@@ -239,8 +239,16 @@ export async function executeFullPipeline(
     const domData = await sendToContentScript("PERCEIVE_PAGE", null);
     if (!domData) {
       captureStep.status = "error";
-      captureStep.details = "Failed to get page data from content script";
-      return buildErrorResult("Content script not available. Reload the page.", steps, startTime);
+      captureStep.details = "Content script could not reach the page";
+      // BUG-04 FIX: YouTube and some other sites use CSP that blocks extension
+      // content script injection. Detect this and give an actionable message.
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const url = activeTab?.url || "";
+      const isMediaSite = /youtube\.com|twitch\.tv|netflix\.com|hulu\.com/i.test(url);
+      const msg = isMediaSite
+        ? `Cannot access ${new URL(url).hostname} — media streaming sites block extension content scripts. Try a different page.`
+        : "Content script not available. Reload the page and try again.";
+      return buildErrorResult(msg, steps, startTime);
     }
     captureStep.details = `${domData.elements.length} elements, ${domData.forms.length} forms`;
 
@@ -678,31 +686,41 @@ export async function executeFullPipeline(
     // PHASE 7: EXECUTE — Run plan steps via content script
     // ════════════════════════════════════════════════════════
 
+    // Detect whether any plan step navigated away from the page.
+    // After navigation, the content script is destroyed — subsequent
+    // sendToContentScript calls will fail with "Receiving end does not exist".
+    const didNavigate = planResult.steps.some((s) => s.action.type === "navigate");
+
     let executionResult: { success: boolean; completed: number; total: number; errors: string[] } | null = null;
     if (planResult.steps.length > 0) {
       const execStep = addStep("execute");
       execStep.status = "running";
-      const { executePlanSteps } = await import("./full-pipeline");
+      // BUG-09 FIX: call executePlanSteps directly — no self-import loop
       executionResult = await executePlanSteps(planResult.steps, input.dataContext);
       execStep.status = executionResult.success ? "complete" : "error";
       execStep.details = `${executionResult.completed}/${executionResult.total} steps` +
         (executionResult.errors.length > 0 ? ` (${executionResult.errors.length} errors)` : "");
+
+      // BUG-05 FIX: After navigation, wait for the new page to settle before
+      // any further sendToContentScript calls. Content script takes 400–1200ms
+      // to re-inject after chrome.scripting.executeScript.
+      if (didNavigate) {
+        await sleep(1500);
+      }
     }
 
     // ════════════════════════════════════════════════════════
     // PHASE 7.5: REVIEW — re-read the page so the user can check
     // and correct what actually landed in each sensitive field.
     //
-    // An agent that fills a government form must not be the last
-    // word on what it wrote. This re-perceives AFTER execution, so
-    // the values shown are what is really in the DOM now, not what
-    // the plan intended.
+    // BUG-06 FIX: Skip review after navigation — the page has changed
+    // and reviewing the NEW page's forms would be meaningless/misleading.
     // ════════════════════════════════════════════════════════
 
     let piiReview: PIIReviewField[] | undefined;
     let needs: RequiredInput[] | undefined;
     let outcome: string | undefined;
-    if (executionResult) {
+    if (executionResult && !didNavigate) {
       const reviewStep = addStep("review");
       const after = await runStep(reviewStep, async () =>
         sendToContentScript("PERCEIVE_PAGE", null)
@@ -722,19 +740,26 @@ export async function executeFullPipeline(
     }
 
     // ════════════════════════════════════════════════════════
-    // PHASE 8: SHOW PIPELINE STATUS PANEL
+    // PHASE 8: SHOW PIPELINE STATUS PANEL (in-page overlay)
+    // BUG-02 FIX: Wrap in try/catch — after navigation the content
+    // script is gone. Failure here must never crash the pipeline.
+    // BUG-15 FIX: Use regex /g to replace ALL underscores in step names.
     // ════════════════════════════════════════════════════════
 
-    await sendToContentScript("SHOW_PIPELINE_PANEL", {
-      steps: steps.map((s) => ({
-        name: s.name.replace("_", " "),
-        status: s.status,
-        details: s.details,
-      })),
-      privacyScore: privacyProof.zeroOutboundPII ? 100 : 50,
-      piiDetected: privacyProof.sensitiveDataDetected,
-      piiRedacted: privacyProof.sensitiveDataRedacted,
-    });
+    try {
+      await sendToContentScript("SHOW_PIPELINE_PANEL", {
+        steps: steps.map((s) => ({
+          name: s.name.replace(/_/g, " "),
+          status: s.status,
+          details: s.details,
+        })),
+        privacyScore: privacyProof.zeroOutboundPII ? 100 : 50,
+        piiDetected: privacyProof.sensitiveDataDetected,
+        piiRedacted: privacyProof.sensitiveDataRedacted,
+      });
+    } catch {
+      // Content script gone (e.g. after navigation) — panel is best-effort.
+    }
 
     // Build privacy proof
     if (redactionVerified) {
@@ -928,30 +953,41 @@ function isRestrictedUrl(url?: string): boolean {
 }
 
 async function sendToContentScript(type: string, payload: unknown): Promise<any> {
+  let tab: chrome.tabs.Tab | undefined;
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    tab = tabs[0];
     if (!tab?.id) return null;
     if (isRestrictedUrl(tab.url)) return null;
 
-    return chrome.tabs.sendMessage(tab.id, {
+    return await chrome.tabs.sendMessage(tab.id, {
       type,
       payload,
       source: "background",
       timestamp: Date.now(),
     } as Message);
   } catch {
-    // Try injecting content script first
+    // BUG-01/03 FIX: the first send failed — the content script is either not
+    // injected yet or the tab navigated. Re-use the tab from above to avoid
+    // a second query that may race. Then wait for the tab to be fully loaded
+    // before injecting, otherwise the content script can arrive before the page
+    // DOM is ready and immediately gets evicted.
+    if (!tab?.id) return null;
+    const tabId = tab.id;
+
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return null;
+      // Wait for the tab to finish loading (handles post-navigate scenarios)
+      await waitForTabLoad(tabId, 3000);
 
       await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
+        target: { tabId },
         files: ["content-scripts/content.js"],
       });
-      await sleep(200);
 
-      return chrome.tabs.sendMessage(tab.id, {
+      // Give the injected script time to register its onMessage listener
+      await sleep(400);
+
+      return await chrome.tabs.sendMessage(tabId, {
         type,
         payload,
         source: "background",
@@ -961,6 +997,37 @@ async function sendToContentScript(type: string, payload: unknown): Promise<any>
       return null;
     }
   }
+}
+
+/** Wait up to `maxMs` for a tab to reach the "complete" status. */
+async function waitForTabLoad(tabId: number, maxMs: number): Promise<void> {
+  // Check if already loaded
+  try {
+    const t = await chrome.tabs.get(tabId);
+    if (t.status === "complete") return;
+  } catch {
+    return;
+  }
+
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, maxMs);
+
+    const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
+      if (id !== tabId || info.status !== "complete") return;
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
 }
 
 // ── Build Sanitized Context ──────────────────────────────────

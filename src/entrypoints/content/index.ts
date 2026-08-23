@@ -85,8 +85,12 @@ export default defineContentScript({
       ) => {
         switch (message.type) {
           case "PERCEIVE_PAGE":
-            sendResponse(extractPageState());
-            break;
+            try {
+              sendResponse(extractPageState());
+            } catch (err: any) {
+              sendResponse({ elements: [], forms: [], url: window.location.href, title: document.title, timestamp: Date.now(), textContent: "", metadata: { hasCAPTCHA: false, hasHoneypot: false, isSecure: true, hasFileUpload: false, hasPaymentForm: false, formCount: 0, totalElements: 0, interactiveElements: 0 }, confidence: 0, perceptionTime: 0 });
+            }
+            return true; // BUG-10 FIX: keep channel open even for sync path
 
           case "EXECUTE_ACTION":
             executeAction(message.payload as AgentAction)
@@ -204,7 +208,9 @@ export default defineContentScript({
         const label = getFieldLabel(el);
 
         elements.push({
-          id: el.id || `el-${i}-${Date.now()}`,
+          // BUG-13 FIX: use stable sequential ID without Date.now() so the
+        // planner's target references survive across perception → execution.
+        id: el.id || `el-${i}`,
           tag: el.tagName.toLowerCase(),
           role: el.getAttribute("role") || inferRole(el),
           text,
@@ -585,10 +591,9 @@ export default defineContentScript({
                 ? HTMLTextAreaElement.prototype
                 : HTMLInputElement.prototype;
 
-              const nativeSetter = (
-                Object.getOwnPropertyDescriptor(proto, "value") ||
-                Object.getOwnPropertyDescriptor(proto, "value")
-              )?.set;
+              // BUG-12 FIX: removed duplicate `|| getOwnPropertyDescriptor(proto,"value")`
+              // — both sides of the || were identical, making the fallback dead code.
+              const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
 
               // Clear existing value
               if (nativeSetter) {

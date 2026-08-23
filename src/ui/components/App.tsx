@@ -370,6 +370,8 @@ export function App() {
       <main className="flex-1 overflow-hidden relative z-10">
         <TaskInput onStartTask={startTask} onCancelTask={cancelTask} task={task}>
           {progress && <PipelineProgressPanel progress={progress} />}
+          {/* BUG-11 FIX: show summary for both success AND error — user should
+              always see the steps breakdown, PII count, and error context */}
           {!progress && pipelineResult && <PipelineSummaryPanel result={pipelineResult} />}
           {!progress && subTasks && (
             <div className="hallmark-card p-3 space-y-1.5 animate-fade-in font-mono-press">

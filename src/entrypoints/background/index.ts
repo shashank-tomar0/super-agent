@@ -94,11 +94,12 @@ export default defineBackground({
     function startKeepalive() {
       if (keepaliveInterval) return;
       keepaliveInterval = setInterval(() => {
-        // chrome.alarms keeps the SW alive
-        chrome.alarms.create("keepalive", { when: Date.now() + 20000 });
+        // BUG-14 FIX: alarm delay (24s) < interval (25s) so there's no gap
+        // window where the SW could die between pings.
+        chrome.alarms.create("keepalive", { when: Date.now() + 24000 });
       }, 25000);
       // Also fire immediately
-      chrome.alarms.create("keepalive", { when: Date.now() + 20000 });
+      chrome.alarms.create("keepalive", { when: Date.now() + 24000 });
     }
 
     function stopKeepalive() {
