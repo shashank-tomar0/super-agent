@@ -4,7 +4,6 @@ import type { NetworkStats } from "../../core/privacy/network-monitor";
 
 export function PrivacyMonitor() {
   const [stats, setStats] = useState<NetworkStats>(getStats());
-  const [showProof, setShowProof] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -26,120 +25,110 @@ export function PrivacyMonitor() {
   }, []);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 font-sans text-gray-100">
+      {/* Title Bar */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-300">🔒 Privacy Monitor</h2>
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-white/80">Privacy Monitor</h2>
+        </div>
         <span
-          className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-          style={{ backgroundColor: `${privacyScore.color}20`, color: privacyScore.color, border: `1px solid ${privacyScore.color}40` }}
+          className="text-[10px] px-2.5 py-0.5 rounded-full font-medium tracking-wide uppercase"
+          style={{ backgroundColor: `${privacyScore.color}15`, color: privacyScore.color, border: `1px solid ${privacyScore.color}30` }}
         >
           {privacyScore.label}
         </span>
       </div>
 
       {/* Privacy Score Ring */}
-      <div className="flex justify-center">
-        <div className="relative w-32 h-32">
-          <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="52" fill="none" stroke="#1f2937" strokeWidth="8" />
+      <div className="flex justify-center py-2">
+        <div className="relative w-28 h-28">
+          <svg className="w-28 h-28 -rotate-90" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
             <circle
               cx="60" cy="60" r="52" fill="none"
               stroke={privacyScore.color}
-              strokeWidth="8"
+              strokeWidth="6"
               strokeDasharray={`${(privacyScore.score / 100) * 327} 327`}
               strokeLinecap="round"
               className="transition-all duration-1000"
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold" style={{ color: privacyScore.color }}>
+            <span className="text-2xl font-bold tracking-tight" style={{ color: privacyScore.color }}>
               {privacyScore.score}
             </span>
-            <span className="text-[10px] text-gray-500">Privacy Score</span>
+            <span className="text-[9px] uppercase tracking-widest text-white/40 font-medium">Score</span>
           </div>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Monitoring" value={stats.isMonitoring ? `${elapsed}s` : "Off"} icon="⏱️" />
-        <StatCard label="Total Requests" value={String(stats.totalRequests)} icon="📡" />
+      <div className="grid grid-cols-2 gap-2.5">
+        <StatCard label="Monitoring" value={stats.isMonitoring ? `${elapsed}s` : "Off"} />
+        <StatCard label="Total Requests" value={String(stats.totalRequests)} />
         <StatCard
-          label="Outbound"
+          label="Outbound Egress"
           value={String(stats.outboundRequests)}
-          icon="🌐"
           alert={stats.outboundRequests > 0}
         />
-        <StatCard label="Blocked" value={String(stats.blockedRequests.length)} icon="🛡️" />
+        <StatCard label="Blocked PII" value={String(stats.blockedRequests.length)} />
       </div>
 
-      {/* Zero Request Banner */}
+      {/* Zero Egress Proof Banner */}
       {stats.isMonitoring && stats.outboundRequests === 0 && (
-        <div className="bg-green-900/20 border border-green-800/30 rounded-lg p-3 text-center">
-          <div className="text-lg mb-1">✅</div>
-          <p className="text-xs text-green-400 font-medium">Zero Outbound Requests</p>
-          <p className="text-[10px] text-gray-500 mt-1">
-            All processing happened in your browser. Nothing left your device.
+        <div className="hallmark-card rounded-2xl p-3.5 border border-emerald-500/20 bg-emerald-500/5 text-center space-y-1">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
+            Verified Zero Outbound Egress
+          </div>
+          <p className="text-[10px] text-white/50 font-light leading-relaxed">
+            All vision processing, OCR, and PII detection ran locally inside browser WASM.
           </p>
         </div>
       )}
 
       {/* Outbound Warning */}
       {stats.outboundRequests > 0 && (
-        <div className="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
-          <p className="text-xs text-red-400 font-medium mb-1">
-            ⚠️ {stats.outboundRequests} Outbound Request(s) Detected
+        <div className="hallmark-card rounded-2xl p-3.5 border border-rose-500/20 bg-rose-500/5 space-y-2">
+          <p className="text-xs font-medium text-rose-300 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+            {stats.outboundRequests} Outbound Request(s) Detected
           </p>
-          {Array.from(stats.requestsByDomain.entries())
-            .filter(([d]) => d !== "localhost" && !d.includes("chrome-extension"))
-            .map(([domain, count]) => (
-              <div key={domain} className="flex justify-between text-[10px] text-gray-400">
-                <span>{domain}</span>
-                <span>{count}</span>
-              </div>
-            ))}
+          <div className="space-y-1">
+            {Array.from(stats.requestsByDomain.entries())
+              .filter(([d]) => d !== "localhost" && !d.includes("chrome-extension"))
+              .map(([domain, count]) => (
+                <div key={domain} className="flex justify-between text-[10px] text-white/60 font-mono">
+                  <span>{domain}</span>
+                  <span>{count}</span>
+                </div>
+              ))}
+          </div>
         </div>
       )}
 
-      {/* Privacy Proof */}
-      <div className="space-y-2">
-        <button
-          onClick={() => setShowProof(!showProof)}
-          className="w-full text-[11px] text-gray-400 hover:text-gray-300 py-2 border border-gray-800 rounded-lg transition-colors"
-        >
-          {showProof ? "Hide" : "Show"} Privacy Proof
-        </button>
-        {showProof && (
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-            <pre className="text-[10px] text-gray-400 whitespace-pre-wrap font-mono leading-relaxed">
-              {generatePrivacyProof()}
-            </pre>
-            <button
-              onClick={copyProof}
-              className="mt-2 w-full text-[10px] text-blue-400 hover:text-blue-300 py-1"
-            >
-              {copied ? "✓ Copied!" : "Copy Proof"}
-            </button>
-          </div>
-        )}
-      </div>
+      {/* Copy Proof Action */}
+      <button
+        onClick={copyProof}
+        className="w-full hallmark-button rounded-xl py-2.5 text-xs text-white/80 hover:text-white font-medium flex items-center justify-center gap-2 transition-all"
+      >
+        <svg className="w-3.5 h-3.5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+        </svg>
+        {copied ? "Proof Copied to Clipboard!" : "Copy Cryptographic Privacy Proof"}
+      </button>
     </div>
   );
 }
 
-function StatCard({ label, value, icon, alert }: {
-  label: string;
-  value: string;
-  icon: string;
-  alert?: boolean;
-}) {
+function StatCard({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
   return (
-    <div className={`bg-gray-900 rounded-lg p-3 border ${alert ? "border-red-800/50" : "border-gray-800"}`}>
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm">{icon}</span>
-        <span className="text-[10px] text-gray-500">{label}</span>
-      </div>
-      <span className={`text-lg font-bold ${alert ? "text-red-400" : "text-gray-300"}`}>
+    <div className={`hallmark-card rounded-2xl p-3 border transition-all ${alert ? "border-rose-500/30 bg-rose-500/5" : "border-white/10"}`}>
+      <span className="text-[9px] uppercase tracking-wider text-white/40 font-medium block mb-1">{label}</span>
+      <span className={`text-base font-semibold tracking-tight ${alert ? "text-rose-300" : "text-white"}`}>
         {value}
       </span>
     </div>
