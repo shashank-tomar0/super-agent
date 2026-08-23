@@ -415,7 +415,7 @@ export function ProviderSettings() {
 
       {/* Priority Order */}
       <div className="text-[10px] text-gray-600 space-y-1">
-        <p>Priority: Ollama (local) &gt; Claude &gt; OpenAI &gt; OpenRouter</p>
+        <p>Priority: a configured cloud provider (Claude &gt; OpenAI &gt; OpenRouter) is used first; Ollama (local) is the fallback. With no cloud key set, everything stays local (Ollama first).</p>
         <p>The first available provider is used automatically.</p>
       </div>
     </div>

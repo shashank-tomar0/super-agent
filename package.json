@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "fmt": "prettier --write src/",
     "models": "node scripts/download-models.mjs",
-    "server": "node server/index.js"
+    "server": "node server/index.cjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",

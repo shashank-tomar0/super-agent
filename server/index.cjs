@@ -120,6 +120,31 @@ async function checkOllama() {
   }
 }
 
+// Pick the best locally-available Ollama model instead of hardcoding one.
+// Mirrors the client-side llm-bridge preference order so the server works
+// with whatever the user actually pulled (e.g. qwen2.5:1.5b).
+let _ollamaModel = null;
+async function getOllamaModel() {
+  if (_ollamaModel) return _ollamaModel;
+  try {
+    const r = await fetch(`${OLLAMA_HOST}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      const d = await r.json();
+      const names = (d.models || []).map((m) => m.name);
+      _ollamaModel =
+        names.find((n) => n.includes("qwen2.5:3b")) ||
+        names.find((n) => n.includes("qwen2.5")) ||
+        names.find((n) => /qwen|llama|mistral|phi|gemma/i.test(n)) ||
+        names[0] ||
+        null;
+      if (_ollamaModel) console.log(`[VLESS] Ollama model selected: ${_ollamaModel}`);
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return _ollamaModel || process.env.OLLAMA_MODEL || "qwen2.5:3b";
+}
+
 async function planWithOllama(task, context, data) {
   const prompt = buildPlanningPrompt(task, context, data);
 
@@ -127,12 +152,13 @@ async function planWithOllama(task, context, data) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "qwen2.5:3b",
+      model: await getOllamaModel(),
       prompt,
       stream: false,
-      options: { temperature: 0.3, num_predict: 2048 },
+      format: "json",
+      options: { temperature: 0.2, num_predict: 1024 },
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(90000),
   });
 
   if (!response.ok) throw new Error(`Ollama ${response.status}`);
@@ -152,7 +178,7 @@ Forms: ${ps?.forms?.length || 0}`;
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "qwen2.5:3b",
+      model: await getOllamaModel(),
       prompt,
       stream: false,
       options: { temperature: 0.3, num_predict: 512 },

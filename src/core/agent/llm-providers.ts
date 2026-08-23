@@ -645,8 +645,39 @@ export async function checkProviders(): Promise<ProviderStatus[]> {
 }
 
 /**
+ * Provider order for planning.
+ *
+ * Default is local-first: Ollama runs on-device, so with no cloud key
+ * configured nothing ever leaves the machine (unchanged behaviour). But the
+ * moment the user adds a cloud key — which auto-enables that provider — they
+ * have explicitly opted into egress, and a hosted model is both far faster and
+ * far smarter than a small local one. So a configured, reachable cloud
+ * provider takes precedence and Ollama drops to being the offline fallback.
+ *
+ * This fixes the latency trap where a running-but-slow Ollama (30s timeout)
+ * was always tried first even when a cloud key was present.
+ */
+function planningPriority(
+  configs: Record<ProviderID, ProviderConfig>,
+  statuses: ProviderStatus[]
+): ProviderID[] {
+  const cloud: ProviderID[] = ["claude", "openai", "openrouter"];
+  const ready = (id: ProviderID) =>
+    !!statuses.find((s) => s.id === id)?.available && !!configs[id]?.enabled;
+
+  const readyCloud = cloud.filter(ready);
+  if (readyCloud.length === 0) {
+    // No cloud provider configured — stay fully local, Ollama first.
+    return ["ollama", "claude", "openai", "openrouter"];
+  }
+  // Cloud opted-in: preferred cloud first (Claude leads), Ollama as fallback.
+  return [...readyCloud, "ollama", ...cloud.filter((c) => !readyCloud.includes(c))];
+}
+
+/**
  * Generate a plan using the best available provider.
- * Tries providers in priority order: Ollama -> Claude -> OpenAI -> OpenRouter
+ * Order is decided by planningPriority(): cloud-first once a key is set,
+ * otherwise local-first (Ollama).
  */
 export async function generatePlanWithBestProvider(
   taskDescription: string,
@@ -657,8 +688,7 @@ export async function generatePlanWithBestProvider(
   const configs = await loadProviderConfigs();
   const statuses = await checkProviders();
 
-  // Try each available provider in order
-  const priority: ProviderID[] = ["ollama", "claude", "openai", "openrouter"];
+  const priority = planningPriority(configs, statuses);
 
   for (const id of priority) {
     const status = statuses.find((s) => s.id === id);
@@ -708,7 +738,7 @@ export async function getBestAvailableProvider(): Promise<{
 } | null> {
   const configs = await loadProviderConfigs();
   const statuses = await checkProviders();
-  const priority: ProviderID[] = ["ollama", "claude", "openai", "openrouter"];
+  const priority = planningPriority(configs, statuses);
 
   for (const id of priority) {
     const status = statuses.find((s) => s.id === id);
