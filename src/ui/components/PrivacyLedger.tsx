@@ -41,7 +41,7 @@ interface LedgerData {
   privacyScore: number;
 }
 
-export function PrivacyLedger() {
+export function PrivacyLedger({ pipelineResult }: { pipelineResult?: any }) {
   const [data, setData] = useState<LedgerData>({
     tripwireActive: false,
     totalRequests: 0,
@@ -58,6 +58,18 @@ export function PrivacyLedger() {
 
   const [expanded, setExpanded] = useState(false);
 
+  // Merge pipeline result data into ledger state (the real fix)
+  useEffect(() => {
+    if (pipelineResult) {
+      setData((prev) => ({
+        ...prev,
+        piiDetected: pipelineResult.piiDetection?.summary?.totalRegions ?? prev.piiDetected,
+        piiRedacted: pipelineResult.redactionSummary?.redacted ?? prev.piiRedacted,
+        redactionVerified: pipelineResult.privacyProof?.redactionVerified ?? prev.redactionVerified,
+      }));
+    }
+  }, [pipelineResult]);
+
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -70,16 +82,25 @@ export function PrivacyLedger() {
           timestamp: Date.now(),
         });
         if (response) {
-          setData((prev) => ({
-            ...prev,
-            tripwireActive: true,
-            totalRequests: response.totalRequests || 0,
-            blockedRequests: response.blockedRequests || 0,
-            cleanRequests: response.cleanRequests || 0,
-            totalBytesInspected: response.totalBytesInspected || 0,
-            totalBytesBlocked: response.totalBytesBlocked || 0,
-            events: response.events || [],
-          }));
+          setData((prev) => {
+            const blocked = response.blockedRequests || 0;
+            const outbound = response.totalRequests - response.cleanRequests;
+            // Compute privacy score: 100 if zero PII leaked, -10 per blocked, -20 per outbound
+            let score = 100;
+            if (blocked > 0) score = Math.max(0, 100 - blocked * 10);
+            else if (outbound > 0) score = Math.max(0, 100 - outbound * 20);
+            return {
+              ...prev,
+              tripwireActive: true,
+              totalRequests: response.totalRequests || 0,
+              blockedRequests: blocked,
+              cleanRequests: response.cleanRequests || 0,
+              totalBytesInspected: response.totalBytesInspected || 0,
+              totalBytesBlocked: response.totalBytesBlocked || 0,
+              events: response.events || [],
+              privacyScore: score,
+            };
+          });
         }
       } catch {
         // Content script not ready
@@ -223,11 +244,13 @@ export function PrivacyLedger() {
             text="Tripwire active — monitoring all outbound requests"
           />
           <ProofLine
-            passed={data.blockedRequests === 0}
+            passed={data.blockedRequests === 0 && !pipelineResult?.privacyProof?.dataSentToServer?.piiText && !pipelineResult?.privacyProof?.dataSentToServer?.formValues}
             text={
-              data.blockedRequests === 0
-                ? "Zero PII sent to any server"
-                : `${data.blockedRequests} PII-containing request(s) BLOCKED`
+              data.blockedRequests > 0
+                ? `${data.blockedRequests} PII-containing request(s) BLOCKED by tripwire`
+                : pipelineResult?.privacyProof?.dataSentToServer?.piiText || pipelineResult?.privacyProof?.dataSentToServer?.formValues
+                  ? "WARNING: Some sensitive data may have been transmitted"
+                  : "Zero PII sent to any server"
             }
           />
           <ProofLine
@@ -239,8 +262,11 @@ export function PrivacyLedger() {
             }
           />
           <ProofLine
-            passed={true}
-            text="All ML inference runs on-device (WebGPU/WASM)"
+            passed={pipelineResult?.planResult?.provider !== "cloud" && pipelineResult?.planResult?.provider !== "ollama"}
+            text={pipelineResult?.planResult?.provider
+              ? `Planning via ${pipelineResult.planResult.provider}${pipelineResult.planResult.provider.includes('cloud') ? ' (server-side)' : ' (on-device)'}`
+              : "All ML inference runs on-device (WebGPU/WASM)"
+            }
           />
         </div>
         <p className="text-[9px] text-gray-600 mt-2">

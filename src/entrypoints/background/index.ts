@@ -17,13 +17,11 @@ import type {
   AgentTask,
   PageState,
   MessageType,
-  PlannedAction,
   AgentAction,
-  VerificationSignal,
 } from "../../types";
 import type { PipelineResult } from "../../core/pipeline/full-pipeline";
 import type { ModelId, OcrResult } from "../../types/runtime";
-import { log, narratePerception, narrateAction, narrateResult, narrateRetry, narrateLearning } from "../../core/agent/learning-log";
+import { log } from "../../core/agent/learning-log";
 import { startMonitoring, stopMonitoring, isClean, getStats } from "../../core/privacy/network-monitor";
 import { getEgressStats, recordPageObservations } from "../../core/privacy/egress-guard";
 import { validateForm } from "../../core/agent/validator";
@@ -31,16 +29,15 @@ import { callOffscreen, isRuntimeEnvelope } from "../../core/runtime/messaging";
 
 // ── Lazy imports: HEAVY modules loaded on-demand ──────────
 // executeFullPipeline pulls in ONNX runtime, vision pipeline, PII detector
-// llm-bridge pulls in server communication
 // llm-providers pulls in 4 provider implementations + prompt builder
 // Loading these eagerly makes the SW 70MB → crashes on startup.
-let _llmBridge: any = null;
 let _fullPipeline: any = null;
 let _llmProviders: any = null;
+let _llmBridge: any = null;
 
-async function lazyLLMBridge() { if (!_llmBridge) _llmBridge = await import("../../core/agent/llm-bridge"); return _llmBridge; }
 async function lazyFullPipeline() { if (!_fullPipeline) _fullPipeline = await import("../../core/pipeline/full-pipeline"); return _fullPipeline; }
 async function lazyLLMProviders() { if (!_llmProviders) _llmProviders = await import("../../core/agent/llm-providers"); return _llmProviders; }
+async function lazyLLMBridge() { if (!_llmBridge) _llmBridge = await import("../../core/agent/llm-bridge"); return _llmBridge; }
 
 export default defineBackground({
   persistent: false,
@@ -230,7 +227,6 @@ export default defineBackground({
         currentAbortController.abort();
       }
       currentAbortController = new AbortController();
-      const signal = currentAbortController.signal;
 
       // Start privacy monitoring and keepalive
       startMonitoring();
@@ -261,222 +257,51 @@ export default defineBackground({
       }
 
       try {
-        // ── PHASE 1: PERCEIVE ──────────────────────────
-        log("discovery", "Scanning page...");
-        const pageState = await handlePerceivePage();
+        // ════════════════════════════════════════════════════════
+        // DELEGATE TO FULL PIPELINE
+        // The full pipeline handles: DOM + OCR + Florence-2 ViT +
+        // ScreenGraph fusion + PII detection + redaction + re-OCR
+        // verification + planning (VLM/LLM/deterministic) + execution.
+        // This avoids duplicating logic in handleStartTask.
+        // ════════════════════════════════════════════════════════
 
-        log("analysis", `Page: "${pageState.title}" | ${pageState.elements.length} interactive elements | ${pageState.forms.length} form(s)`);
-        if (pageState.metadata.hasCAPTCHA) {
-          log("warning", "⚠️ CAPTCHA detected — agent cannot bypass this");
-        }
-        if (pageState.metadata.hasHoneypot) {
-          log("warning", "⚠️ Honeypot field detected — will skip");
-        }
-
-        narratePerception(pageState);
-
-        // ── PHASE 2: PLAN ──────────────────────────────
-        task.status = "planning";
+        task.status = "analyzing";
         broadcast({ type: "TASK_STATUS", payload: task });
-        log("analysis", "Generating action plan...");
+        log("discovery", "Scanning page with full perception pipeline...");
 
-        let plan;
-        if ((await lazyLLMBridge()).isLLMAvailable()) {
-          log("analysis", "🧠 Using LLM for intelligent planning...");
-          const llmResult = await (await lazyLLMBridge()).generatePlanWithLLM(payload.description, pageState, payload.data);
-          if (llmResult.usedLLM && llmResult.steps.length > 0) {
-            log("learning", `LLM generated ${llmResult.steps.length} steps`);
-            plan = {
-              steps: llmResult.steps,
-              estimatedTime: llmResult.steps.length * 1500,
-              riskLevel: "low" as const,
-              requiresConfirmation: false,
-              dataMappings: [],
-            };
-          } else {
-            plan = generateRuleBasedPlan(payload.description, pageState, payload.data);
-          }
-        } else {
-          log("warning", "⚠️ No AI provider available — using limited rule-based planning. Configure an AI provider in Settings for full capability.");
-          plan = generateRuleBasedPlan(payload.description, pageState, payload.data);
-        }
+        const pipeline = await lazyFullPipeline();
+        const result = await pipeline.executeFullPipeline({
+          taskDescription: payload.description,
+          dataContext: payload.data,
+        });
 
-        task.plan = plan;
-        task.totalSteps = plan.steps.length;
-        log("analysis", `Plan: ${plan.steps.length} steps, ~${((plan.estimatedTime) / 1000).toFixed(1)}s`);
-
-        if (plan.steps.length === 0) {
-          log("warning", "No actions to perform — task complete");
-          task.status = "completed";
-          task.endTime = Date.now();
-          task.result = "No actionable steps found on this page";
-          broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean() } });
-          return task;
-        }
-
-        // ── PHASE 2.5: VALIDATE ────────────────────────
-        const allFormFields = pageState.forms.flatMap((f) => f.fields);
-        if (allFormFields.length > 0) {
-          const validation = validateForm(
-            allFormFields.map((f) => ({
-              name: f.name, id: f.id, label: f.label, type: f.type,
-              value: f.value || payload.data?.[f.name] || payload.data?.[f.label] || "",
-              placeholder: "", required: f.required, maxLength: f.maxLength, pattern: f.pattern,
-            }))
-          );
-          if (!validation.allValid) {
-            log("warning", `Validation warnings: ${validation.blockingIssues.join(", ")}`);
-          } else if (allFormFields.some((f) => f.required)) {
-            log("success", `All ${allFormFields.filter((f) => f.required).length} required fields validated OK`);
-          }
-        }
-
-        // ── PHASE 3: EXECUTE ───────────────────────────
-        task.status = "executing";
-        broadcast({ type: "TASK_STATUS", payload: task });
-
-        let stepsCompleted = 0;
-
-        for (const step of plan.steps) {
-          // Check if task was cancelled
-          if (signal.aborted) {
-            task.status = "failed";
-            task.error = "Task cancelled by user";
-            task.endTime = Date.now();
-            stopMonitoring();
-            stopKeepalive();
-            broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean() } });
-            return task;
-          }
-
-          task.currentStep = step.index;
-          broadcast({ type: "TASK_STATUS", payload: task });
-          narrateAction(step.action);
-          log("action", `Step ${step.index + 1}/${plan.steps.length}: ${step.reasoning}`);
-
-          // Capture before state
-          let beforeState: PageState | null = null;
-          try {
-            beforeState = await handlePerceivePage();
-          } catch { /* optional */ }
-
-          // Execute with retries
-          let lastError = "";
-          let success = false;
-
-          for (let retry = 0; retry <= step.action.maxRetries; retry++) {
-            if (retry > 0) {
-              narrateRetry(retry, step.action.maxRetries, lastError);
-              log("action", `Retry ${retry}/${step.action.maxRetries}: ${lastError}`);
-              // Wait before retry (content may be loading)
-              await sleep(500);
-            }
-
-            const result = await handleExecuteAction(step.action);
-
-            if (result.success) {
-              success = true;
-
-              // ── VERIFY: Compare before/after page state ─
-              const signals: VerificationSignal[] = [];
-
-              try {
-                const afterState = await handlePerceivePage();
-
-                // DOM diff: did the page change?
-                const elementCountChanged = beforeState
-                  ? beforeState.elements.length !== afterState.elements.length
-                  : false;
-                const textChanged = beforeState
-                  ? beforeState.textContent !== afterState.textContent
-                  : false;
-                const formsChanged = beforeState
-                  ? JSON.stringify(beforeState.forms) !== JSON.stringify(afterState.forms)
-                  : false;
-
-                const pageChanged = elementCountChanged || textChanged || formsChanged;
-
-                signals.push({
-                  type: "dom_diff",
-                  passed: true,
-                  confidence: pageChanged ? 0.9 : 0.6,
-                  details: pageChanged
-                    ? "Page state changed after action"
-                    : "Page unchanged (action may be visual only)",
-                });
-
-                if (pageChanged) {
-                  log("success", `Step ${step.index + 1} verified: page changed`);
-                } else {
-                  log("analysis", `Step ${step.index + 1}: page unchanged (may be visual only)`);
-                }
-
-                // For type actions: verify the field value changed
-                if (step.action.type === "type" && step.action.value) {
-                  const targetField = afterState.forms
-                    .flatMap((f) => f.fields)
-                    .find((f) => f.id === step.action.target || f.name === step.action.target);
-
-                  if (targetField) {
-                    const valueMatches = targetField.value === step.action.value;
-                    signals.push({
-                      type: "dom_diff",
-                      passed: valueMatches,
-                      confidence: valueMatches ? 0.95 : 0.3,
-                      details: valueMatches
-                        ? `Field value matches: "${step.action.value}"`
-                        : `Field value mismatch: expected "${step.action.value}", got "${targetField.value}"`,
-                    });
-                  }
-                }
-              } catch {
-                // Verification is best-effort
-                signals.push({
-                  type: "dom_diff",
-                  passed: true,
-                  confidence: 0.5,
-                  details: "Verification skipped — could not re-perceive page",
-                });
-              }
-
-              narrateResult(true, signals.length > 0 ? `${signals.length} signal(s) checked` : undefined);
-              break;
-            }
-
-            lastError = result.error || "Unknown error";
-          }
-
-          if (!success) {
-            narrateResult(false, lastError);
-            log("error", `Step ${step.index + 1} failed after retries: ${lastError}`);
-
-            task.status = "failed";
-            task.error = lastError;
-            task.endTime = Date.now();
-            stopMonitoring();
-            stopKeepalive();
-            broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean() } });
-            return task;
-          }
-
-          stepsCompleted++;
-          await sleep(300); // Brief pause between steps
-        }
-
-        // ── PHASE 4: COMPLETE ──────────────────────────
-        task.status = "completed";
+        // Map pipeline result back to AgentTask
+        task.status = result.success ? "completed" : "failed";
         task.endTime = Date.now();
-        task.result = `Completed ${stepsCompleted}/${plan.steps.length} steps`;
+        task.result = result.success
+          ? `Completed ${result.plan.length} steps (${result.planResult.provider}) — ` +
+            `${result.piiDetection.summary.totalRegions} PII detected, ` +
+            `${result.redactionSummary.redacted} redacted, ` +
+            `${result.latency.total.toFixed(0)}ms total`
+          : result.error || "Pipeline failed";
+        task.totalSteps = result.plan.length;
+        task.plan = {
+          steps: result.plan,
+          estimatedTime: result.latency.total,
+          riskLevel: "low",
+          requiresConfirmation: false,
+          dataMappings: [],
+        };
 
-        const elapsed = ((task.endTime - task.startTime) / 1000).toFixed(1);
-        narrateLearning(`Task completed in ${elapsed}s. ${stepsCompleted} steps executed.`);
-        log("success", `🎉 Task completed! ${stepsCompleted}/${plan.steps.length} steps in ${elapsed}s`);
+        log(result.success ? "success" : "error", task.result ?? "no result");
+        log("success", `Privacy: ${result.privacyProof.sensitiveDataDetected} PII detected, ` +
+          `${result.privacyProof.sensitiveDataRedacted} redacted, ` +
+          `${result.privacyProof.zeroOutboundPII ? "zero" : "SOME"} PII sent to server`
+        );
 
         const finalStats = stopMonitoring();
         stopKeepalive();
-        log("success", `🔒 Privacy: ${finalStats.outboundRequests} outbound requests, ${finalStats.bytesSent} bytes sent`);
-
-        broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean(), privacyStats: finalStats } });
+        broadcast({ type: "TASK_COMPLETE", payload: { task, privacyClean: isClean(), privacyStats: finalStats, pipelineResult: result ?? undefined } });
         return task;
       } catch (error) {
         task.status = "failed";
@@ -591,218 +416,6 @@ export default defineBackground({
     }
 
     // ══════════════════════════════════════════════════════
-    // RULE-BASED PLAN GENERATOR
-    // When Ollama isn't available, generate a plan from rules
-    // ══════════════════════════════════════════════════════
-
-    function generateRuleBasedPlan(
-      description: string,
-      pageState: PageState,
-      data?: Record<string, string>
-    ) {
-      const steps: PlannedAction[] = [];
-      let idx = 0;
-      const lower = description.toLowerCase();
-
-      // Fill form: click + type each unfilled required field
-      if (lower.includes("fill") || lower.includes("complete") || lower.includes("submit")) {
-        const allFields = pageState.forms.flatMap((f) => f.fields);
-        const unfilled = allFields.filter((f) => !f.filledByUser && f.required);
-
-        for (const field of unfilled) {
-          const value = data?.[field.name] || data?.[field.label] || "";
-          const target = field.id || field.name || field.label;
-
-          if (value) {
-            // Click to focus
-            steps.push({
-              index: idx++,
-              action: {
-                id: `a-${idx}`, type: "click",
-                target, retries: 0, maxRetries: 3,
-              },
-              reasoning: `Focus "${field.label || field.name}"`,
-              confidence: 0.9,
-              verification: "Field should be focused",
-              risk: "low",
-            });
-
-            // Type value
-            steps.push({
-              index: idx++,
-              action: {
-                id: `a-${idx}`, type: "type",
-                target, value, retries: 0, maxRetries: 3,
-              },
-              reasoning: `Type "${value}" in "${field.label || field.name}"`,
-              confidence: 0.85,
-              verification: `Field value should be "${value}"`,
-              risk: "low",
-            });
-          } else if (field.options.length > 0) {
-            // Select dropdown — pick first option as placeholder
-            steps.push({
-              index: idx++,
-              action: {
-                id: `a-${idx}`, type: "select",
-                target, value: field.options[0] || "", retries: 0, maxRetries: 3,
-              },
-              reasoning: `Select "${field.options[0]}" in "${field.label || field.name}"`,
-              confidence: 0.7,
-              verification: "Option should be selected",
-              risk: "low",
-            });
-          }
-        }
-      }
-
-      // Scroll
-      if (lower.includes("scroll")) {
-        const dir = lower.includes("up") ? "up" : "down";
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "scroll",
-            value: dir, retries: 0, maxRetries: 1,
-          },
-          reasoning: `Scroll ${dir}`,
-          confidence: 0.9,
-          verification: "Page should scroll",
-          risk: "low",
-        });
-      }
-
-      // Click specific element
-      const clickMatch = lower.match(/(?:click|press|tap)\s+(?:on\s+)?["']?([^"']+)["']?/);
-      if (clickMatch) {
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "click",
-            target: clickMatch[1].trim(), retries: 0, maxRetries: 3,
-          },
-          reasoning: `Click "${clickMatch[1].trim()}"`,
-          confidence: 0.8,
-          verification: "Element should respond",
-          risk: "low",
-        });
-      }
-
-      // Search on a site: "search X on youtube", "find X on google"
-      const searchMatch = lower.match(/(?:search|find|look up|search for)\s+(.+?)\s+(?:on|in|at)\s+(\S+)/);
-      if (searchMatch) {
-        const query = searchMatch[1].trim();
-        const site = searchMatch[2].trim();
-        // Map common site names to URLs
-        const siteUrls: Record<string, string> = {
-          youtube: "https://www.youtube.com",
-          google: "https://www.google.com",
-          bing: "https://www.bing.com",
-          amazon: "https://www.amazon.in",
-          flipkart: "https://www.flipkart.com",
-          twitter: "https://x.com",
-          x: "https://x.com",
-          github: "https://github.com",
-        };
-        const baseUrl = siteUrls[site] || `https://www.${site}.com`;
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "navigate",
-            value: baseUrl, retries: 0, maxRetries: 1,
-          },
-          reasoning: `Navigate to ${site}`,
-          confidence: 0.9,
-          verification: "URL should change",
-          risk: "medium",
-        });
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "type",
-            target: "search",
-            value: query, retries: 0, maxRetries: 3,
-          },
-          reasoning: `Search for "${query}" on ${site}`,
-          confidence: 0.85,
-          verification: "Search results should appear",
-          risk: "low",
-        });
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "press_key",
-            key: "Enter", retries: 0, maxRetries: 1,
-          },
-          reasoning: "Submit search",
-          confidence: 0.9,
-          verification: "Page should show results",
-          risk: "low",
-        });
-      }
-
-      // Open a site by name: "open youtube", "go to google", "visit github"
-      const siteMatch = lower.match(/(?:go to|open|navigate to|visit)\s+(\S+)$/);
-      if (siteMatch && steps.length === 0) {
-        const site = siteMatch[1].replace(/[^a-z0-9.]/g, "");
-        const siteUrls: Record<string, string> = {
-          youtube: "https://www.youtube.com",
-          google: "https://www.google.com",
-          bing: "https://www.bing.com",
-          amazon: "https://www.amazon.in",
-          flipkart: "https://www.flipkart.com",
-          twitter: "https://x.com",
-          x: "https://x.com",
-          github: "https://github.com",
-        };
-        let url = siteUrls[site];
-        if (!url) {
-          // If it looks like a domain (has dot or is a known TLD)
-          if (site.includes(".") || /^(com|org|net|in|io|dev)$/.test(site)) {
-            url = site.startsWith("http") ? site : `https://${site}`;
-          } else {
-            // Try as a site name
-            url = `https://www.${site}.com`;
-          }
-        }
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "navigate",
-            value: url, retries: 0, maxRetries: 1,
-          },
-          reasoning: `Navigate to "${url}"`,
-          confidence: 0.9,
-          verification: "URL should change",
-          risk: "medium",
-        });
-      }
-
-      // Fallback: no recognized command
-      if (steps.length === 0) {
-        steps.push({
-          index: idx++,
-          action: {
-            id: `a-${idx}`, type: "wait",
-            timeout: 1000, retries: 0, maxRetries: 0,
-          },
-          reasoning: `No actions recognized for: "${description}"`,
-          confidence: 0.3,
-          verification: "Page unchanged",
-          risk: "low",
-        });
-      }
-
-      return {
-        steps,
-        estimatedTime: steps.length * 1500,
-        riskLevel: "low" as const,
-        requiresConfirmation: false,
-        dataMappings: [],
-      };
-    }
-
-    // ══════════════════════════════════════════════════════
     // FULL PIPELINE — PII Detection + Redaction + Planning
     // ══════════════════════════════════════════════════════
 
@@ -824,7 +437,7 @@ export default defineBackground({
           piiDetection: { regions: [], summary: { totalRegions: 0, criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, byCategory: {} as any, bySource: { dom: 0, vision: 0, combined: 0 }, overallConfidence: 0, detectionTimeMs: 0 }, sanitizedDOMMetadata: { safeElements: [], safeTextContent: "", safeForms: [], pageMetadata: { title: "", url: "", hasForm: false, hasCAPTCHA: false, elementCount: 0 } } },
           redactionSummary: { totalPII: 0, redacted: 0, cssInjected: false, overlayShown: false },
           planResult: { success: false, steps: [], reasoning: "", provider: "none", latencyMs: 0 },
-          privacyProof: { sensitiveDataDetected: 0, sensitiveDataRedacted: 0, dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false }, zeroOutboundPII: true, proofDescription: "" },
+          privacyProof: { sensitiveDataDetected: 0, sensitiveDataRedacted: 0, dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false }, zeroOutboundPII: true, redactionVerified: false, proofDescription: "" },
           reasoningTrace: null,
           latency: { capture: 0, ocr: 0, piiDetection: 0, redaction: 0, verification: 0, planning: 0, execution: 0, total: 0, backend: "error", tier: "error" },
           totalLatencyMs: 0,

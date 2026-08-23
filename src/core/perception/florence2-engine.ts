@@ -24,6 +24,10 @@ import { detectBackend } from "../runtime/backend";
 
 env.allowLocalModels = true;
 env.useBrowserCache = true;
+if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+  (env as any).wasm = (env as any).wasm || {};
+  (env as any).wasm.wasmPaths = chrome.runtime.getURL("ort/");
+}
 
 // Belt and braces: overwrite whatever transformers.js decided at import time.
 // Its default is a remote jsdelivr URL, which MV3 blocks and which would make
@@ -161,6 +165,31 @@ export async function warmFlorence(
   await ensureModel(onProgress);
 }
 
+/**
+ * Check if Florence-2 is available (loaded or loadable).
+ * Returns false if the model failed to load or the runtime is Tier C.
+ */
+export function isFlorenceAvailable(): boolean {
+  return model !== null && processor !== null;
+}
+
+/**
+ * Gracefully degrade: skip Florence-2 if not loaded within timeout.
+ * Returns true if the model loaded, false if we should skip to DOM+OCR fallback.
+ */
+export async function ensureModelWithTimeout(ms = 60000): Promise<boolean> {
+  try {
+    await Promise.race([
+      ensureModel(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+    ]);
+    return true;
+  } catch {
+    console.warn(`[VLESS] Florence-2 failed to load within ${ms}ms — using DOM+OCR fallback`);
+    return false;
+  }
+}
+
 // ── Core Perception Functions ────────────────────────────────
 
 /**
@@ -262,12 +291,35 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
   let textRegions: TextRegion[] = [];
   let caption = "";
 
+  // Graceful degradation: if model fails to load in 15s, skip to fallback
+  const loaded = await ensureModelWithTimeout(15000);
+  if (!loaded) {
+    return {
+      elements: [],
+      textRegions: [],
+      caption: "",
+      timings: {
+        total: performance.now() - totalStart,
+        modelLoad: modelLoadTime,
+        od: 0,
+        ocr: 0,
+        grounding: 0,
+      },
+      tasksRun: [],
+      model: {
+        name: "Florence-2-base-ft",
+        backend: "SKIPPED (DOM+OCR fallback)",
+        tier: "C",
+      },
+    };
+  }
+
   try {
     // Task 1: Open-vocab detection (find UI elements)
     const odStart = performance.now();
     elements = await detectElements(imageUrl);
     tasksRun.push("OD");
-    void odStart; // timing tracked in totals
+    const odTime = performance.now() - odStart;
 
     // Task 2: OCR with regions (read all text)
     const ocrStart = performance.now();
@@ -275,7 +327,7 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
     tasksRun.push("OCR_WITH_REGION");
     const ocrTime = performance.now() - ocrStart;
 
-    // Task 3: Generate page caption
+    // Task 3: Generate page caption (optional)
     try {
       const image = await RawImage.fromURL(imageUrl);
       const inputs = await processor(image, {
@@ -290,7 +342,7 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
       })[0].trim();
       tasksRun.push("CAPTION");
     } catch {
-      // Caption is optional
+      // Caption is optional — not a failure
     }
 
     return {
@@ -300,8 +352,8 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
       timings: {
         total: performance.now() - totalStart,
         modelLoad: modelLoadTime,
-        od: tasksRun.includes("OD") ? performance.now() - totalStart - ocrTime : 0,
-        ocr: tasksRun.includes("OCR_WITH_REGION") ? ocrTime : 0,
+        od: odTime,
+        ocr: ocrTime,
         grounding: 0,
       },
       tasksRun,
@@ -338,8 +390,10 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
 
 /**
  * Parse Florence-2 <OD> output.
- * Format: <loc_XXXX> tokens encode normalized coordinates (0-1000).
- * Pairs: <loc_0050><loc_0120><loc_0200><loc_0350> → box (y1,x1,y2,x2)
+ * Format: interleaved groups of 4 <loc_XXXX> tokens + label text.
+ * Example: <loc_0050><loc_0120><loc_0200><loc_0350>button<loc_0100><loc_0200><loc_0300><loc_0400>input
+ * Each group of 4 locs encodes (y1, x1, y2, x2) in 0-1000 normalized coords.
+ * The text after each loc group is the label for that detection.
  */
 function parseODOutput(
   decoded: string,
@@ -348,36 +402,22 @@ function parseODOutput(
 ): DetectedElement[] {
   const elements: DetectedElement[] = [];
 
-  // Extract loc tokens
-  const locPattern = /<loc_(\d{4})>/g;
-  const locs: number[] = [];
+  // Match interleaved pattern: 4 loc tokens followed by optional label text
+  // The label continues until the next <loc_ token or end of string
+  const pattern = /<loc_(\d{1,4})><loc_(\d{1,4})><loc_(\d{1,4})><loc_(\d{1,4})>([^<]*)/g;
   let match;
-  while ((match = locPattern.exec(decoded)) !== null) {
-    locs.push(parseInt(match[1]) / 1000); // Normalize to 0-1
-  }
+  while ((match = pattern.exec(decoded)) !== null) {
+    const y1 = parseInt(match[1]) / 1000;
+    const x1 = parseInt(match[2]) / 1000;
+    const y2 = parseInt(match[3]) / 1000;
+    const x2 = parseInt(match[4]) / 1000;
+    const label = match[5].trim();
 
-  // Extract labels between loc groups
-  const labelPattern = /([a-zA-Z][a-zA-Z0-9_ ]+)/g;
-  const textAfterLocs = decoded.replace(/<loc_\d{4}>/g, " ").trim();
-  const labels: string[] = [];
-  let labelMatch;
-  while ((labelMatch = labelPattern.exec(textAfterLocs)) !== null) {
-    const label = labelMatch[1].trim();
-    if (label.length > 1 && !["the", "and", "with", "for"].includes(label.toLowerCase())) {
-      labels.push(label);
-    }
-  }
-
-  // Parse boxes: groups of 4 locs (y1, x1, y2, x2)
-  const numBoxes = Math.floor(locs.length / 4);
-  for (let i = 0; i < numBoxes; i++) {
-    const y1 = locs[i * 4] || 0;
-    const x1 = locs[i * 4 + 1] || 0;
-    const y2 = locs[i * 4 + 2] || 1;
-    const x2 = locs[i * 4 + 3] || 1;
+    // Skip empty-label detections (noise)
+    if (x2 <= x1 || y2 <= y1) continue;
 
     elements.push({
-      label: labels[i] || `element-${i}`,
+      label: label || `element-${elements.length}`,
       box: {
         x: Math.round(x1 * imageWidth),
         y: Math.round(y1 * imageHeight),
@@ -385,7 +425,7 @@ function parseODOutput(
         h: Math.round((y2 - y1) * imageHeight),
       },
       confidence: 0.85,
-      category: inferCategory(labels[i] || ""),
+      category: inferCategory(label),
     });
   }
 
@@ -404,7 +444,7 @@ function parseOCROutput(
   const regions: TextRegion[] = [];
 
   // Florence-2 OCR output format: <loc_XXXX>text
-  const pattern = /<loc_(\d{4})><loc_(\d{4})><loc_(\d{4})><loc_(\d{4})>([^<\n]+)/g;
+  const pattern = /<loc_(\d{1,4})><loc_(\d{1,4})><loc_(\d{1,4})><loc_(\d{1,4})>([^<\n]+)/g;
   let match;
   while ((match = pattern.exec(decoded)) !== null) {
     const y1 = parseInt(match[1]) / 1000;
@@ -441,7 +481,7 @@ function parseGroundingOutput(
 ): GroundingQuery {
   const results: GroundingQuery["results"] = [];
 
-  const pattern = /<loc_(\d{4})><loc_(\d{4})><loc_(\d{4})><loc_(\d{4})>/g;
+  const pattern = /<loc_(\d{1,4})><loc_(\d{1,4})><loc_(\d{1,4})><loc_(\d{1,4})>/g;
   let match;
   while ((match = pattern.exec(decoded)) !== null) {
     const y1 = parseInt(match[1]) / 1000;

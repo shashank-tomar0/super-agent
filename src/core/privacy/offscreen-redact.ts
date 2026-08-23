@@ -9,6 +9,13 @@
 import { runOcr } from "../ocr/ocr-engine";
 import { scanTextForPII } from "./pii-detector";
 import type { OcrResult } from "../../types/runtime";
+import {
+  verifyAadhaarChecksum,
+  verifyLuhn,
+  verifyPANFormat,
+  verifyIFSCFormat,
+  verifyIndianPhone,
+} from "./pii-detector";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -243,4 +250,205 @@ function blobToDataURL(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+// ── Vision PII Detection (runs in offscreen — has canvas) ───
+
+/**
+ * Detect PII from a screenshot using vision: face detection + password dots.
+ * Returns bounding boxes for visual PII that DOM-only detection misses.
+ * Runs in the offscreen document where HTMLCanvasElement is available.
+ */
+export async function detectVisionPII(
+  imageDataUrl: string
+): Promise<Array<{
+  category: string;
+  sensitivity: string;
+  boundingBox: { x: number; y: number; width: number; height: number };
+  confidence: number;
+  detectionMethod: string;
+}>> {
+  const regions: Array<{
+    category: string;
+    sensitivity: string;
+    boundingBox: { x: number; y: number; width: number; height: number };
+    confidence: number;
+    detectionMethod: string;
+  }> = [];
+
+  try {
+    const response = await fetch(imageDataUrl);
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    // Face detection via SkinDetector heuristic (works in offscreen)
+    const faceRegions = detectFacesInOffscreen(ctx, canvas.width, canvas.height);
+    for (const face of faceRegions) {
+      regions.push({
+        category: "face",
+        sensitivity: "critical",
+        boundingBox: face,
+        confidence: 0.7,
+        detectionMethod: "Face detected via skin-color + shape heuristic (offscreen)",
+      });
+    }
+
+    // Password dot detection
+    const pwdRegions = detectPasswordDotsInOffscreen(ctx, canvas.width, canvas.height);
+    for (const pwd of pwdRegions) {
+      regions.push({
+        category: "password",
+        sensitivity: "critical",
+        boundingBox: pwd,
+        confidence: 0.85,
+        detectionMethod: "Password dot pattern detected (uniform small glyphs in input field)",
+      });
+    }
+  } catch (err) {
+    console.warn("[VLESS] Vision PII detection failed:", err);
+  }
+
+  return regions;
+}
+
+function detectFacesInOffscreen(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number
+): Array<{ x: number; y: number; width: number; height: number }> {
+  const scale = 4;
+  const smallW = Math.floor(width / scale);
+  const smallH = Math.floor(height / scale);
+
+  const smallCanvas = new OffscreenCanvas(smallW, smallH);
+  const smallCtx = smallCanvas.getContext("2d")!;
+  smallCtx.drawImage(ctx.canvas, 0, 0, smallW, smallH);
+
+  const imageData = smallCtx.getImageData(0, 0, smallW, smallH);
+  const pixels = imageData.data;
+
+  // HSV skin detection
+  const skinMask = new Uint8Array(smallW * smallH);
+  for (let y = 0; y < smallH; y++) {
+    for (let x = 0; x < smallW; x++) {
+      const idx = (y * smallW + x) * 4;
+      const r = pixels[idx] / 255;
+      const g = pixels[idx + 1] / 255;
+      const b = pixels[idx + 2] / 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const delta = max - min;
+      const s = max === 0 ? 0 : delta / max;
+      let h = 0;
+      if (delta !== 0) {
+        if (max === r) h = ((g - b) / delta) % 6;
+        else if (max === g) h = (b - r) / delta + 2;
+        else h = (r - g) / delta + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+      }
+      const isSkinTone = r > g && g > b && (r - b) > 0.05;
+      if (h >= 0 && h <= 45 && s >= 0.25 && s <= 0.65 && max >= 0.40 && max <= 0.90 && isSkinTone) {
+        skinMask[y * smallW + x] = 1;
+      }
+    }
+  }
+
+  // Simple connected components
+  const faces: Array<{ x: number; y: number; width: number; height: number }> = [];
+  const visited = new Uint8Array(smallW * smallH);
+  const pixelArea = smallW * smallH;
+
+  for (let y = 0; y < smallH; y++) {
+    for (let x = 0; x < smallW; x++) {
+      const idx = y * smallW + x;
+      if (skinMask[idx] && !visited[idx]) {
+        // BFS flood fill
+        const queue = [{ x, y }];
+        visited[idx] = 1;
+        let minX = x, maxX = x, minY = y, maxY = y;
+        let count = 0;
+        while (queue.length > 0) {
+          const { x: cx, y: cy } = queue.shift()!;
+          count++;
+          minX = Math.min(minX, cx); maxX = Math.max(maxX, cx);
+          minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
+          for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && nx < smallW && ny >= 0 && ny < smallH && skinMask[ny * smallW + nx] && !visited[ny * smallW + nx]) {
+              visited[ny * smallW + nx] = 1;
+              queue.push({ x: nx, y: ny });
+            }
+          }
+        }
+        const w = maxX - minX + 1;
+        const h = maxY - minY + 1;
+        const area = w * h;
+        const ar = w / h;
+        if (ar >= 0.6 && ar <= 1.8 && area >= pixelArea * 0.003 && area <= pixelArea * 0.10) {
+          faces.push({
+            x: minX * scale, y: minY * scale,
+            width: w * scale, height: h * scale,
+          });
+        }
+      }
+    }
+  }
+
+  return faces;
+}
+
+function detectPasswordDotsInOffscreen(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number
+): Array<{ x: number; y: number; width: number; height: number }> {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+  const regions: Array<{ x: number; y: number; width: number; height: number }> = [];
+  const rowScanHeight = 20;
+  const darkThreshold = 50;
+
+  for (let y = 0; y < height - rowScanHeight; y += rowScanHeight) {
+    let darkPixelCount = 0;
+    let totalPixels = 0;
+    let minX = width, maxX = 0;
+    for (let dy = 0; dy < rowScanHeight; dy++) {
+      for (let x = 0; x < width; x++) {
+        const idx = ((y + dy) * width + x) * 4;
+        const brightness = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+        if (brightness < darkThreshold) {
+          darkPixelCount++;
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+        }
+        totalPixels++;
+      }
+    }
+    const darkRatio = darkPixelCount / totalPixels;
+    if (darkRatio >= 0.05 && darkRatio <= 0.4 && maxX - minX > 30) {
+      // Check for dot pattern (multiple small dark runs separated by light gaps)
+      const midY = y + Math.floor(rowScanHeight / 2);
+      const runs: number[] = [];
+      let currentRun = 0;
+      for (let x = 0; x < width; x++) {
+        const idx = (midY * width + x) * 4;
+        const brightness = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+        if (brightness < darkThreshold) { currentRun++; }
+        else { if (currentRun > 0) { runs.push(currentRun); currentRun = 0; } }
+      }
+      if (currentRun > 0) runs.push(currentRun);
+      const avgRun = runs.length > 0 ? runs.reduce((a, b) => a + b, 0) / runs.length : 0;
+      if (avgRun >= 2 && avgRun <= 10 && runs.length >= 3) {
+        regions.push({ x: minX, y, width: maxX - minX, height: rowScanHeight });
+      }
+    }
+  }
+
+  return regions;
 }

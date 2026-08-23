@@ -487,6 +487,30 @@ export default defineContentScript({
     // ACTION EXECUTION — Production-grade
     // ════════════════════════════════════════════════════════
 
+    // DOM settle: wait for mutations to stop after an action
+    function waitForDOMSettle(maxWaitMs = 2000): Promise<void> {
+      return new Promise((resolve) => {
+        let timeout: ReturnType<typeof setTimeout> | null = null;
+        let debounce: ReturnType<typeof setTimeout> | null = null;
+        const observer = new MutationObserver(() => {
+          // Reset debounce on each mutation
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            observer.disconnect();
+            if (timeout) clearTimeout(timeout);
+            resolve();
+          }, 300); // 300ms of no mutations = settled
+        });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        // Max wait: don't block forever
+        timeout = setTimeout(() => {
+          observer.disconnect();
+          if (debounce) clearTimeout(debounce);
+          resolve();
+        }, maxWaitMs);
+      });
+    }
+
     async function executeAction(
       action: AgentAction
     ): Promise<{ success: boolean; error?: string }> {
@@ -508,7 +532,7 @@ export default defineContentScript({
                 return;
               }
               el.scrollIntoView({ behavior: "smooth", block: "center" });
-              setTimeout(() => {
+              setTimeout(async () => {
                 const rect = el.getBoundingClientRect();
                 const x = rect.x + rect.width / 2;
                 const y = rect.y + rect.height / 2;
@@ -530,6 +554,8 @@ export default defineContentScript({
                   );
                 }
                 if ("focus" in el) (el as HTMLElement).focus();
+                // Wait for DOM to settle after click (handles SPA navigation, dropdowns, etc.)
+                await waitForDOMSettle(1500);
                 resolve({ success: true });
               }, 300);
               break;
@@ -554,11 +580,14 @@ export default defineContentScript({
               // input.value directly doesn't trigger React's onChange handler.
               // We use the native prototype setter to set the value, then dispatch
               // an input event so React picks it up.
+              const isTextArea = el instanceof HTMLTextAreaElement;
+              const proto = isTextArea
+                ? HTMLTextAreaElement.prototype
+                : HTMLInputElement.prototype;
+
               const nativeSetter = (
-                Object.getOwnPropertyDescriptor(
-                  HTMLInputElement.prototype,
-                  "value"
-                ) || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")
+                Object.getOwnPropertyDescriptor(proto, "value") ||
+                Object.getOwnPropertyDescriptor(proto, "value")
               )?.set;
 
               // Clear existing value
