@@ -14,12 +14,14 @@ import { detectAllPII, type PIIDetectionResult } from "../privacy/pii-detector";
 import { generateDOMRedactionCSS } from "../privacy/redaction-engine";
 import { initializeServer, isServerAvailable, getActiveProvider, type SanitizedContext, type PlanResult } from "../agent/server-bridge";
 import { callOffscreen } from "../runtime/messaging";
-import type { OcrResult } from "../../types/runtime";
+import type { OcrResult, OcrWord } from "../../types/runtime";
+import { fuseScreenGraph, type ScreenGraph } from "../perception/screen-graph";
 import {
   startTrace, traceObserve, tracePIIDetection, traceRedaction,
   traceRedactionVerification, tracePlan, completeTrace, type ReasoningTrace,
 } from "../agent/reasoning-trace";
 import { generatePlanWithBestProvider, getBestAvailableProvider } from "../agent/llm-providers";
+import { generatePlanWithVLM, dataURLToBase64, isVLMAvailable } from "../agent/vlm-bridge";
 import type { PlannedAction, PageState, Message } from "../../types";
 
 // ── Pipeline Types ───────────────────────────────────────────
@@ -42,6 +44,7 @@ export interface PipelineResult {
   reasoningTrace: ReasoningTrace | null;
   latency: LatencyBreakdown;
   totalLatencyMs: number;
+  screenGraph?: ScreenGraph | null;
   error?: string;
 }
 
@@ -227,61 +230,97 @@ export async function executeFullPipeline(
     }
 
     // ════════════════════════════════════════════════════════
+    // PHASE 1.75: SCREEN GRAPH FUSION — Tri-signal merge
+    // Fuse DOM ⊕ OCR ⊕ ViT into a single ScreenGraph.
+    // This is the key innovation: DOM-only agents miss canvas content,
+    // vision-only agents miss semantic structure.
+    // ════════════════════════════════════════════════════════
+
+    let ocrWords: OcrWord[] = [];
+    let screenGraph: ScreenGraph | null = null;
+
+    const fusionStep = addStep("screen_graph");
+    const fusionResult = await runStep(fusionStep, async () => {
+      // Run PP-OCR to get structured word-level results
+      if (screenshotDataUrl) {
+        try {
+          const ocrResult: OcrResult = await callOffscreen("runOcr", {
+            imageDataUrl: screenshotDataUrl,
+            lang: "auto",
+          });
+          ocrWords = ocrResult.words || [];
+        } catch (err) {
+          console.warn("[VLESS] OCR for ScreenGraph failed:", err);
+        }
+      }
+
+      // Extract Florence-2 signals
+      const florenceElements = (florenceResult?.elements || []).map((e: any) => ({
+        label: e.label || e.text || "",
+        box: e.box || e.boundingBox || { x: 0, y: 0, w: 0, h: 0 },
+        confidence: e.confidence || 0.5,
+        category: e.category || "unknown",
+      }));
+
+      const florenceTextRegions = (florenceResult?.textRegions || []).map((tr: any) => ({
+        text: tr.text,
+        box: tr.box,
+        confidence: tr.confidence || 0.5,
+      }));
+
+      // Run the tri-signal fusion
+      return fuseScreenGraph(
+        domData,
+        ocrWords,
+        florenceElements,
+        florenceTextRegions,
+        florenceResult?.caption || ""
+      );
+    });
+
+    if (fusionResult) {
+      screenGraph = fusionResult;
+      fusionStep.details = `ScreenGraph: ${fusionResult.stats.totalElements} elements ` +
+        `(${fusionResult.sourceBreakdown.dom} DOM, ${fusionResult.sourceBreakdown.ocr} OCR, ` +
+        `${fusionResult.sourceBreakdown.vit} ViT, ${fusionResult.sourceBreakdown.fused} fused) ` +
+        `[${fusionResult.timings.fusion.toFixed(0)}ms]`;
+      traceObserve(`ScreenGraph fused ${fusionResult.stats.totalElements} elements from 3 signals`);
+    }
+
+    // ════════════════════════════════════════════════════════
     // PHASE 2: DETECT PII — Multi-signal (DOM + OCR + ViT)
     // ════════════════════════════════════════════════════════
 
     const detectStep = addStep("detect_pii");
 
-    // Run OCR on screenshot via the offscreen ML host (correct MV3 architecture)
-    let ocrTextBlocks: Array<{ text: string; confidence: number; boundingBox: { x: number; y: number; width: number; height: number } }> = [];
-    if (screenshotDataUrl) {
-      try {
-        // If Florence-2 already ran OCR, use its text regions
-        if (florenceResult?.textRegions?.length > 0) {
-          ocrTextBlocks = florenceResult.textRegions.map((tr: any) => ({
-            text: tr.text,
-            confidence: tr.confidence,
-            boundingBox: tr.box,
-          }));
-        }
-        // Also run PP-OCR for additional text coverage (Florence-2 + PP-OCR = best coverage)
-        const ocrResult: OcrResult = await callOffscreen("runOcr", {
-          imageDataUrl: screenshotDataUrl,
-          lang: "auto",
+    // Build OCR text blocks from the ScreenGraph OCR results for PII detection
+    let ocrTextBlocks: Array<{ text: string; confidence: number; boundingBox: { x: number; y: number; width: number; height: number } }> = ocrWords.map((w) => ({
+      text: w.text,
+      confidence: w.score,
+      boundingBox: { x: w.box.x, y: w.box.y, width: w.box.w, height: w.box.h },
+    }));
+    // Also include Florence-2 OCR text regions not already captured
+    if (florenceResult?.textRegions?.length > 0) {
+      for (const tr of florenceResult.textRegions) {
+        const isDupe = ocrTextBlocks.some((existing) => {
+          const a = existing.boundingBox;
+          const b = tr.box;
+          const ix = Math.max(0, Math.min(a.x + a.width, b.x + b.w) - Math.max(a.x, b.x));
+          const iy = Math.max(0, Math.min(a.y + a.height, b.y + b.h) - Math.max(a.y, b.y));
+          const interArea = ix * iy;
+          const unionArea = a.width * a.height + b.w * b.h - interArea;
+          return unionArea > 0 && interArea / unionArea > 0.4;
         });
-        if (ocrResult.words && ocrResult.words.length > 0) {
-          const ppOcrBlocks = ocrResult.words.map((w) => ({
-            text: w.text,
-            confidence: w.score,
-            boundingBox: { x: w.box.x, y: w.box.y, width: w.box.w, height: w.box.h },
-          }));
-          // Merge: deduplicate by IoU, keep highest confidence
-          for (const block of ppOcrBlocks) {
-            const duplicate = ocrTextBlocks.find((existing) => {
-              const a = existing.boundingBox;
-              const b = block.boundingBox;
-              const ix = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
-              const iy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-              const interArea = ix * iy;
-              const unionArea = a.width * a.height + b.width * b.height - interArea;
-              return unionArea > 0 && interArea / unionArea > 0.5;
-            });
-            if (!duplicate || block.confidence > duplicate.confidence) {
-              if (duplicate) {
-                duplicate.text = block.text;
-                duplicate.confidence = block.confidence;
-              } else {
-                ocrTextBlocks.push(block);
-              }
-            }
-          }
-          detectStep.details = `OCR: ${ocrTextBlocks.length} text regions (Florence-2 + PP-OCR, ${ocrResult.timings.total.toFixed(0)}ms)`;
+        if (!isDupe) {
+          ocrTextBlocks.push({
+            text: tr.text,
+            confidence: tr.confidence || 0.5,
+            boundingBox: { x: tr.box.x, y: tr.box.y, width: tr.box.w, height: tr.box.h },
+          });
         }
-      } catch (err) {
-        // OCR is optional — DOM detection still works
-        console.warn("[VLESS] Offscreen OCR failed:", err);
       }
     }
+
     const detectionResult = await runStep(detectStep, async () => {
       return detectAllPII(domData, undefined, ocrTextBlocks.length > 0 ? ocrTextBlocks : undefined);
     });
@@ -445,12 +484,34 @@ export async function executeFullPipeline(
     sanitizeStep.details = "Context sanitized";
 
     // ════════════════════════════════════════════════════════
-    // PHASE 6: GET PLAN — Ask LLM or use rules
+    // PHASE 6: GET PLAN — VLM visual → LLM text → deterministic → rules
+    // PS requirement: send anonymized visual context to a VLM.
     // ════════════════════════════════════════════════════════
 
     const planStep = addStep("get_plan");
     const planResultData = await runStep(planStep, async () => {
-      // Try multi-provider LLM first, then fallback to server-bridge, then rules
+      // Priority 1: VLM with redacted screenshot (PS requirement)
+      if (redactedScreenshotUrl && await isVLMAvailable()) {
+        console.log("[VLESS] Using VLM visual context for planning");
+        const vlmResult = await generatePlanWithVLM({
+          screenshotBase64: dataURLToBase64(redactedScreenshotUrl),
+          sanitizedContext,
+          taskDescription: input.taskDescription,
+          dataContext: input.dataContext,
+        });
+        if (vlmResult.steps.length > 0) {
+          traceObserve(`VLM (${vlmResult.provider}) interpreted redacted screenshot, generated ${vlmResult.steps.length} steps`);
+          return {
+            success: true,
+            steps: vlmResult.steps,
+            reasoning: vlmResult.reasoning,
+            provider: vlmResult.provider,
+            latencyMs: vlmResult.latencyMs,
+          };
+        }
+      }
+
+      // Priority 2: Multi-provider LLM (text-only planning)
       const llmResult = await generatePlanWithBestProvider(
         input.taskDescription,
         sanitizedContext,
@@ -521,7 +582,6 @@ export async function executeFullPipeline(
     if (planResult.steps.length > 0) {
       const execStep = addStep("execute");
       execStep.status = "running";
-      const { executePlanSteps } = await import("./full-pipeline");
       executionResult = await executePlanSteps(planResult.steps, input.dataContext);
       execStep.status = executionResult.success ? "complete" : "error";
       execStep.details = `${executionResult.completed}/${executionResult.total} steps` +
@@ -583,6 +643,7 @@ export async function executeFullPipeline(
       reasoningTrace: completedTrace,
       latency,
       totalLatencyMs: totalLatency,
+      screenGraph,
     };
   } catch (error) {
 

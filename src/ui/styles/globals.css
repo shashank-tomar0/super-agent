@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base Styles ───────────────────────────────────────────── */
+/* ── Base ──────────────────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
@@ -11,16 +11,18 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #0a0a0f;
+  color: #e5e7eb;
 }
 
-/* ── Scrollbar Styling ─────────────────────────────────────── */
+/* ── Scrollbar ─────────────────────────────────────────────── */
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -28,15 +30,15 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: rgba(255, 255, 255, 0.12);
 }
 
-/* ── Animation Keyframes ───────────────────────────────────── */
+/* ── Animations ────────────────────────────────────────────── */
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
@@ -47,10 +49,10 @@ body {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
-@keyframes slide-in {
+@keyframes slide-up {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -58,8 +60,8 @@ body {
   }
 }
 
-.animate-slide-in {
-  animation: slide-in 0.2s ease-out;
+.animate-slide-up {
+  animation: slide-up 0.25s ease-out;
 }
 
 @keyframes fade-in {
@@ -69,4 +71,48 @@ body {
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* ── Glassmorphism Utilities ───────────────────────────────── */
+
+.glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-hover:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Selection ─────────────────────────────────────────────── */
+
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: white;
+}
+
+/* ── Focus Ring ────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 1px solid rgba(99, 102, 241, 0.5);
+  outline-offset: 1px;
 }

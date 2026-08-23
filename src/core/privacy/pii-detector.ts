@@ -605,12 +605,11 @@ async function detectFacesFromCanvas(
   // Strategy 2: Improved heuristic fallback (better than old skin-color approach)
   // Uses multi-color-space skin detection + edge density + circularity
   return detectFacesHeuristic(canvas);
-}
-
-/**
+}/**
  * Improved face detection heuristic.
- * Uses HSV skin detection (more robust than YCbCr) + edge analysis.
- * Not as good as FaceDetector API, but much better than the old approach.
+ * Uses HSV skin detection + edge density + circularity to avoid
+ * false positives on brown/orange UI elements (buttons, cards, etc).
+ * Returns low-confidence results (0.5-0.7) to indicate heuristic-only.
  */
 function detectFacesHeuristic(
   canvas: HTMLCanvasElement
@@ -633,7 +632,7 @@ function detectFacesHeuristic(
   const imageData = smallCtx.getImageData(0, 0, smallW, smallH);
   const pixels = imageData.data;
 
-  // HSV-based skin detection (more robust than YCbCr)
+  // HSV-based skin detection with tighter bounds to reduce false positives
   const skinMask = new Uint8Array(smallW * smallH);
   for (let y = 0; y < smallH; y++) {
     for (let x = 0; x < smallW; x++) {
@@ -653,14 +652,17 @@ function detectFacesHeuristic(
         h *= 60;
         if (h < 0) h += 360;
       }
-      // Skin range in HSV: H 0-50, S 0.23-0.68, V 0.35-1.0
-      if (h >= 0 && h <= 50 && s >= 0.23 && s <= 0.68 && max >= 0.35) {
+      // Tighter skin range: H 0-45 (rejects oranges/browns more),
+      // S 0.25-0.65 (rejects saturated colors), V 0.40-0.90 (rejects very bright/dark)
+      // Also require R > G > B (typical skin in RGB)
+      const isSkinTone = r > g && g > b && (r - b) > 0.05;
+      if (h >= 0 && h <= 45 && s >= 0.25 && s <= 0.65 && max >= 0.40 && max <= 0.90 && isSkinTone) {
         skinMask[y * smallW + x] = 1;
       }
     }
   }
 
-  const dilated = dilateMask(skinMask, smallW, smallH, 3);
+  const dilated = dilateMask(skinMask, smallW, smallH, 2);
   const components = findConnectedComponents(dilated, smallW, smallH);
 
   const faces: Array<{ x: number; y: number; width: number; height: number; confidence: number }> = [];
@@ -670,22 +672,29 @@ function detectFacesHeuristic(
     const aspectRatio = component.width / component.height;
     const area = component.width * component.height;
 
+    // Face-like shape: roughly square or portrait oval
+    // Must be between 0.3% and 10% of the screen (not too small, not too big)
+    // Must not touch the edges of the screen (UI elements often do)
     if (
-      aspectRatio >= 0.5 && aspectRatio <= 2.0 &&
-      area >= pixelArea * 0.001 && area <= pixelArea * 0.15 &&
-      component.x > smallW * 0.05 &&
-      component.x + component.width < smallW * 0.95
+      aspectRatio >= 0.6 && aspectRatio <= 1.8 &&
+      area >= pixelArea * 0.003 && area <= pixelArea * 0.10 &&
+      component.x > smallW * 0.10 && component.x + component.width < smallW * 0.90 &&
+      component.y > smallH * 0.05 && component.y + component.height < smallH * 0.95
     ) {
-      let confidence = 0.65;
-      if (aspectRatio >= 0.7 && aspectRatio <= 1.4) confidence += 0.1;
-      if (area >= pixelArea * 0.005 && area <= pixelArea * 0.08) confidence += 0.1;
+      let confidence = 0.55; // Base: low confidence for heuristic
+      // Boost for face-like aspect ratio
+      if (aspectRatio >= 0.75 && aspectRatio <= 1.35) confidence += 0.1;
+      // Boost for reasonable size (passport photo size)
+      if (area >= pixelArea * 0.008 && area <= pixelArea * 0.05) confidence += 0.1;
+      // Penalize if the component is very elongated (button, bar)
+      if (aspectRatio < 0.7 || aspectRatio > 1.5) confidence -= 0.1;
 
       faces.push({
         x: component.x * scale,
         y: component.y * scale,
         width: component.width * scale,
         height: component.height * scale,
-        confidence: Math.min(confidence, 0.85),
+        confidence: Math.min(Math.max(confidence, 0.45), 0.75),
       });
     }
   }

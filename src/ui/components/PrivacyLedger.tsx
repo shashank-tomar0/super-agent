@@ -41,7 +41,7 @@ interface LedgerData {
   privacyScore: number;
 }
 
-export function PrivacyLedger() {
+export function PrivacyLedger({ pipelineResult }: { pipelineResult?: any }) {
   const [data, setData] = useState<LedgerData>({
     tripwireActive: false,
     totalRequests: 0,

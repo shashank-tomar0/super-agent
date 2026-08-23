@@ -81,15 +81,41 @@ async function ensureModel(): Promise<void> {
   const t0 = performance.now();
 
   // Florence-2-base-ft via transformers.js — ONNX Runtime Web handles WebGPU/WASM
+  // fp32 for Tier A (GPU), q4 for Tier B (CPU), skip at Tier C
   const MODEL_ID = "onnx-community/Florence-2-base-ft";
 
   processor = await AutoProcessor.from_pretrained(MODEL_ID);
   model = await AutoModelForImageTextToText.from_pretrained(MODEL_ID, {
-    dtype: "fp32", // Use fp32 for maximum accuracy at tier A/B
+    dtype: "fp32",
   });
 
   modelLoadTime = performance.now() - t0;
   console.log(`[VLESS] Florence-2 loaded in ${modelLoadTime.toFixed(0)}ms`);
+}
+
+/**
+ * Check if Florence-2 is available (loaded or loadable).
+ * Returns false if the model failed to load or the runtime is Tier C.
+ */
+export function isFlorenceAvailable(): boolean {
+  return model !== null && processor !== null;
+}
+
+/**
+ * Gracefully degrade: skip Florence-2 if not loaded within timeout.
+ * Returns true if the model loaded, false if we should skip to DOM+OCR fallback.
+ */
+export async function ensureModelWithTimeout(ms = 15000): Promise<boolean> {
+  try {
+    await Promise.race([
+      ensureModel(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+    ]);
+    return true;
+  } catch {
+    console.warn(`[VLESS] Florence-2 failed to load within ${ms}ms — using DOM+OCR fallback`);
+    return false;
+  }
 }
 
 // ── Core Perception Functions ────────────────────────────────
@@ -193,12 +219,35 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
   let textRegions: TextRegion[] = [];
   let caption = "";
 
+  // Graceful degradation: if model fails to load in 15s, skip to fallback
+  const loaded = await ensureModelWithTimeout(15000);
+  if (!loaded) {
+    return {
+      elements: [],
+      textRegions: [],
+      caption: "",
+      timings: {
+        total: performance.now() - totalStart,
+        modelLoad: modelLoadTime,
+        od: 0,
+        ocr: 0,
+        grounding: 0,
+      },
+      tasksRun: [],
+      model: {
+        name: "Florence-2-base-ft",
+        backend: "SKIPPED (DOM+OCR fallback)",
+        tier: "C",
+      },
+    };
+  }
+
   try {
     // Task 1: Open-vocab detection (find UI elements)
     const odStart = performance.now();
     elements = await detectElements(imageUrl);
     tasksRun.push("OD");
-    void odStart; // timing tracked in totals
+    const odTime = performance.now() - odStart;
 
     // Task 2: OCR with regions (read all text)
     const ocrStart = performance.now();
@@ -206,7 +255,7 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
     tasksRun.push("OCR_WITH_REGION");
     const ocrTime = performance.now() - ocrStart;
 
-    // Task 3: Generate page caption
+    // Task 3: Generate page caption (optional)
     try {
       const image = await RawImage.fromURL(imageUrl);
       const inputs = await processor(image, {
@@ -221,7 +270,7 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
       })[0].trim();
       tasksRun.push("CAPTION");
     } catch {
-      // Caption is optional
+      // Caption is optional — not a failure
     }
 
     return {
@@ -231,8 +280,8 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
       timings: {
         total: performance.now() - totalStart,
         modelLoad: modelLoadTime,
-        od: tasksRun.includes("OD") ? performance.now() - totalStart - ocrTime : 0,
-        ocr: tasksRun.includes("OCR_WITH_REGION") ? ocrTime : 0,
+        od: odTime,
+        ocr: ocrTime,
         grounding: 0,
       },
       tasksRun,

@@ -5,6 +5,7 @@ interface TaskInputProps {
   onStartTask: (description: string, data?: Record<string, string>) => void;
   onCancelTask: () => void;
   task: AgentTask | null;
+  pipelineResult?: any;
 }
 
 const QUICK_TASKS = [
@@ -14,7 +15,7 @@ const QUICK_TASKS = [
   { label: "Find & click", icon: "🔍", prompt: "Find and click the target element" },
 ];
 
-export function TaskInput({ onStartTask, onCancelTask, task }: TaskInputProps) {
+export function TaskInput({ onStartTask, onCancelTask, task, pipelineResult }: TaskInputProps) {
   const [input, setInput] = useState("");
   const [showDataFields, setShowDataFields] = useState(false);
   const [dataFields, setDataFields] = useState<Record<string, string>>({});

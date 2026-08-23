@@ -16,6 +16,9 @@ export default {
       fontFamily: {
         mono: ["SF Mono", "Fira Code", "Consolas", "monospace"],
       },
+      backdropBlur: {
+        xs: "2px",
+      },
     },
   },
   plugins: [],
