@@ -88,24 +88,24 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
     <div className="flex flex-col h-full overflow-y-auto custom-scrollbar px-4 py-4 space-y-4 font-sans bg-[var(--color-paper)] relative z-10 text-[var(--color-ink)]">
       {/* ── Broadsheet Masthead Slogan ───────────────────────────── */}
       <div className="pt-2 pb-3 space-y-1.5 border-b-2 border-[var(--color-ink)]">
-        <div className="flex items-center justify-between text-[10px] font-mono-press uppercase tracking-widest text-[var(--color-ink-mute)]">
+        <div className="flex items-center justify-between text-[10px] font-mono-press uppercase tracking-widest text-[var(--color-ink-mute)] font-bold">
           <span>FREE BROADSHEET • EDITION 04</span>
           <span>PERCEPTION Nº 01</span>
         </div>
         <h1 className="text-4xl font-display-poster text-[var(--color-ink)] tracking-tight uppercase leading-none">
           <span className="text-[var(--color-accent)]">Private</span> Visual Agent
         </h1>
-        <p className="text-xs font-body-editorial italic text-[var(--color-ink-2)] leading-relaxed">
+        <p className="text-xs font-body-editorial italic text-[var(--color-ink-2)] leading-relaxed font-medium">
           Zero data egress. ViT perception & PII detection run 100% inside your browser.
         </p>
       </div>
 
       {/* ── Active Task Status Card ──────────────────────────────── */}
       {task && isRunning && (
-        <div className="hallmark-card p-3 space-y-2 border-l-4 border-l-[var(--color-accent)]">
+        <div className="hallmark-card p-3.5 space-y-2 border-l-4 border-l-[var(--color-accent)] bg-[var(--color-paper-2)]">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono-press uppercase font-semibold text-[var(--color-accent)] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-ping" />
+            <span className="text-xs font-mono-press uppercase font-bold text-[var(--color-accent)] flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-accent)] animate-ping" />
               {task.status === "analyzing" && "PERCEIVING PAGE DOM & VISION"}
               {task.status === "planning" && "GENERATING ACTION PLAN"}
               {task.status === "executing" && `EXECUTING STEP ${task.currentStep + 1}/${task.totalSteps}`}
@@ -113,13 +113,13 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
             </span>
             <button
               onClick={onCancelTask}
-              className="text-[10px] font-mono-press uppercase text-[var(--color-paper)] bg-[var(--color-ink)] hover:bg-[var(--color-accent)] px-2 py-0.5"
+              className="text-[10px] font-mono-press font-bold uppercase text-[var(--color-paper)] bg-[var(--color-ink)] hover:bg-[var(--color-accent)] px-2.5 py-1"
             >
               Cancel
             </button>
           </div>
-          <p className="text-xs font-body-editorial font-medium">{task.description}</p>
-          <div className="w-full bg-[var(--color-paper-3)] h-1.5 border border-[var(--color-ink)]">
+          <p className="text-sm font-body-editorial font-semibold text-[var(--color-ink)]">{task.description}</p>
+          <div className="w-full bg-[var(--color-paper-3)] h-2 border border-[var(--color-ink)]">
             <div
               className="bg-[var(--color-accent)] h-full transition-all duration-300"
               style={{
@@ -132,12 +132,12 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
 
       {/* ── Completed Task Card ──────────────────────────────────── */}
       {task?.status === "completed" && (
-        <div className="hallmark-card p-3 border-l-4 border-l-[var(--color-teal)] space-y-1">
+        <div className="hallmark-card p-3 border-l-4 border-l-[#006669] space-y-1 bg-[var(--color-paper-2)]">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-teal)]" />
-            <span className="text-xs font-mono-press font-semibold uppercase text-[var(--color-teal)]">Task Completed</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#006669]" />
+            <span className="text-xs font-mono-press font-bold uppercase text-[#006669]">Task Completed</span>
           </div>
-          <p className="text-xs font-body-editorial text-[var(--color-ink)]">{task.result}</p>
+          <p className="text-xs font-body-editorial font-medium text-[var(--color-ink)]">{task.result}</p>
         </div>
       )}
 
@@ -145,20 +145,20 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
       {task?.status === "failed" && (
         <div className="hallmark-card p-3 border-l-4 border-l-[var(--color-accent)] bg-[#faebe8] space-y-1">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
-            <span className="text-xs font-mono-press font-semibold uppercase text-[var(--color-accent)]">Execution Error</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-accent)]" />
+            <span className="text-xs font-mono-press font-bold uppercase text-[var(--color-accent)]">Execution Error</span>
           </div>
-          <p className="text-xs font-body-editorial text-[var(--color-ink)]">{task.error || "Action could not be completed"}</p>
+          <p className="text-xs font-body-editorial font-medium text-[var(--color-ink)]">{task.error || "Action could not be completed"}</p>
         </div>
       )}
 
       {/* ── Rendered Children Panels ────────────────────────────── */}
       {children}
 
-      {/* ── Command Input ────────────────────────────────────────── */}
+      {/* ── Command Input Box (Larger, High-Contrast Font) ───────────── */}
       <div className="space-y-2 pt-1">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-mono-press uppercase tracking-widest font-semibold text-[var(--color-ink-mute)]">
+          <span className="text-[10px] font-mono-press uppercase tracking-widest font-bold text-[var(--color-ink-mute)]">
             Context Presets
           </span>
           <div className="flex items-center gap-1.5">
@@ -179,8 +179,8 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
           </div>
         </div>
 
-        {/* Input Box */}
-        <div className="hallmark-input p-2 flex items-center gap-2">
+        {/* Input Box with Larger & Better Typography */}
+        <div className="hallmark-input p-3 flex items-center gap-3 border-2 border-[var(--color-ink)] bg-[var(--color-paper-2)] shadow-md">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -192,13 +192,13 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
             }}
             placeholder="Instruct agent (e.g. fill form, scan PII)..."
             rows={2}
-            className="flex-1 bg-transparent text-xs text-[var(--color-ink)] placeholder:text-[var(--color-ink-mute)] resize-none focus:outline-none px-1 py-1 font-body-editorial text-sm leading-relaxed"
+            className="flex-1 bg-transparent text-base font-body-editorial font-semibold text-[var(--color-ink)] placeholder:text-[var(--color-ink-mute)] placeholder:font-normal resize-none focus:outline-none px-1 py-0.5 leading-relaxed"
           />
 
           <button
             onClick={handleSubmit}
             disabled={!input.trim() || isRunning}
-            className={`w-9 h-9 flex items-center justify-center transition-all ${
+            className={`w-10 h-10 flex items-center justify-center transition-all ${
               input.trim() && !isRunning
                 ? "hallmark-button-primary"
                 : "bg-[var(--color-paper-3)] border-2 border-[var(--color-ink)] text-[var(--color-ink-mute)] cursor-not-allowed"
@@ -206,9 +206,9 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
             title="Run Command"
           >
             {isRunning ? (
-              <span className="w-3 h-3 border-2 border-[var(--color-paper)] border-t-[var(--color-ink)] rounded-full animate-spin" />
+              <span className="w-4 h-4 border-2 border-[var(--color-paper)] border-t-[var(--color-ink)] rounded-full animate-spin" />
             ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
               </svg>
             )}
@@ -218,7 +218,7 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
 
       {/* ── Quick Action Cards ───────────────────────────────────── */}
       <div className="space-y-2 pt-2">
-        <span className="text-[10px] font-mono-press uppercase tracking-widest font-semibold text-[var(--color-ink-mute)] block">
+        <span className="text-[10px] font-mono-press uppercase tracking-widest font-bold text-[var(--color-ink-mute)] block">
           Quick Actions
         </span>
         <div className="grid grid-cols-2 gap-2">
@@ -226,12 +226,12 @@ export function TaskInput({ onStartTask, onCancelTask, task, children }: TaskInp
             <button
               key={qt.label}
               onClick={() => handleQuickTask(qt.prompt)}
-              className="hallmark-button p-2.5 flex items-center gap-2 text-left group"
+              className="hallmark-button p-3 flex items-center gap-2 text-left group"
             >
               <svg className="w-4 h-4 text-[var(--color-ink)] group-hover:text-[var(--color-paper)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={qt.iconPath} />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={qt.iconPath} />
               </svg>
-              <span className="text-xs font-mono-press uppercase">
+              <span className="text-xs font-mono-press uppercase font-bold">
                 {qt.label}
               </span>
             </button>

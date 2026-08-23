@@ -24,53 +24,53 @@ export function PipelineProgressPanel({ progress }: Props) {
   const total = Math.max(steps.length, 1);
 
   return (
-    <div className="hallmark-card p-3.5 space-y-3 font-sans border-sky-500/20 bg-[#0e111a]">
+    <div className="hallmark-card p-3.5 space-y-3 font-sans border-2 border-[var(--color-ink)] bg-[var(--color-paper-2)]">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-mono text-[11px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse-dot" />
-          <span className="font-semibold text-sky-400 uppercase tracking-wider">Perception Pipeline Active</span>
+        <div className="flex items-center gap-2 font-mono-press text-[11px]">
+          <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-accent)] animate-ping" />
+          <span className="font-bold text-[var(--color-accent)] uppercase tracking-wider">Perception Pipeline Active</span>
         </div>
-        <span className="text-[10px] text-gray-400 font-mono">
+        <span className="text-[10px] text-[var(--color-ink-mute)] font-mono-press font-bold">
           {(elapsedMs / 1000).toFixed(1)}s
         </span>
       </div>
 
       {/* Progress bar */}
-      <div className="w-full bg-[#181b28] rounded h-1 overflow-hidden border border-[#25293c]">
+      <div className="w-full bg-[var(--color-paper-3)] h-2 overflow-hidden border border-[var(--color-ink)]">
         <div
-          className="bg-sky-400 h-full transition-all duration-300"
+          className="bg-[var(--color-accent)] h-full transition-all duration-300"
           style={{ width: `${(done / total) * 100}%` }}
         />
       </div>
 
       {/* Phase list */}
-      <div className="space-y-1.5 font-mono text-[11px]">
+      <div className="space-y-1.5 font-mono-press text-[11px]">
         {steps.map((step, i) => (
-          <div key={`${step.name}-${i}`} className="flex items-center justify-between py-0.5 border-b border-[#181a26] last:border-0">
+          <div key={`${step.name}-${i}`} className="flex items-center justify-between py-1 border-b border-[var(--color-hairline)] last:border-0">
             <div className="flex items-center gap-2 min-w-0">
               {step.status === "complete" && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-[#006669] shrink-0" />
               )}
               {step.status === "running" && (
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-ping shrink-0" />
               )}
               {step.status === "error" && (
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] shrink-0" />
               )}
               {step.status === "pending" && (
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-600 shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-[var(--color-ink-mute)] shrink-0" />
               )}
 
               <span
-                className={`truncate ${
+                className={`truncate font-bold ${
                   step.status === "running"
-                    ? "text-sky-300 font-medium"
+                    ? "text-[var(--color-accent)] font-extrabold"
                     : step.status === "error"
-                      ? "text-rose-300"
+                      ? "text-[var(--color-accent)]"
                       : step.status === "complete"
-                        ? "text-gray-300"
-                        : "text-gray-500"
+                        ? "text-[var(--color-ink)]"
+                        : "text-[var(--color-ink-mute)]"
                 }`}
               >
                 {PHASE_LABELS[step.name] ?? step.name}
@@ -78,12 +78,12 @@ export function PipelineProgressPanel({ progress }: Props) {
             </div>
 
             {step.details && (
-              <span className="text-[10px] text-gray-500 truncate max-w-[120px] text-right font-light ml-2">
+              <span className="text-[10px] text-[var(--color-ink-mute)] truncate max-w-[120px] text-right font-semibold ml-2">
                 {step.details}
               </span>
             )}
             {step.status === "complete" && step.latencyMs > 0 && !step.details && (
-              <span className="text-[10px] text-gray-500 font-mono ml-auto shrink-0">
+              <span className="text-[10px] text-[var(--color-ink-mute)] font-mono-press ml-auto shrink-0 font-semibold">
                 {step.latencyMs.toFixed(0)}ms
               </span>
             )}

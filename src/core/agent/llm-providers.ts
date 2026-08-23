@@ -28,6 +28,10 @@ export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  defaultModel?: string;
+  defaultBaseUrl?: string;
+  requiresApiKey?: boolean;
+  availableModels?: string[];
   maxTokens?: number;
   temperature?: number;
 }

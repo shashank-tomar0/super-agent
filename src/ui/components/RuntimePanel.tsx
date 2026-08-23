@@ -25,22 +25,22 @@ function fmtBytes(n: number): string {
 }
 
 const TIER_META: Record<string, { label: string; cls: string }> = {
-  A: { label: "GPU Accelerated", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-  B: { label: "CPU SIMD", cls: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
-  C: { label: "CPU Baseline", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  A: { label: "GPU Accelerated", cls: "bg-[#006669] text-[var(--color-paper)] border-2 border-[var(--color-ink)]" },
+  B: { label: "CPU SIMD", cls: "bg-[#006669] text-[var(--color-paper)] border-2 border-[var(--color-ink)]" },
+  C: { label: "CPU Baseline", cls: "bg-[var(--color-paper-3)] text-[var(--color-ink)] border-2 border-[var(--color-ink)]" },
 };
 
 const STATE_META: Record<
   ModelStatus["state"],
   { label: string; dot: string; text: string }
 > = {
-  ready: { label: "Ready", dot: "bg-emerald-400", text: "text-emerald-400" },
-  cached: { label: "Cached", dot: "bg-emerald-400", text: "text-emerald-400" },
-  downloading: { label: "Downloading", dot: "bg-sky-400 animate-pulse", text: "text-sky-300" },
-  loading: { label: "Loading", dot: "bg-sky-400 animate-pulse", text: "text-sky-300" },
-  not_loaded: { label: "Not Loaded", dot: "bg-gray-600", text: "text-gray-500" },
-  skipped: { label: "Later Phase", dot: "bg-gray-700", text: "text-gray-600" },
-  error: { label: "Error", dot: "bg-rose-500", text: "text-rose-400" },
+  ready: { label: "Ready", dot: "bg-[#006669]", text: "text-[#006669]" },
+  cached: { label: "Cached", dot: "bg-[#006669]", text: "text-[#006669]" },
+  downloading: { label: "Downloading", dot: "bg-[var(--color-accent)] animate-pulse", text: "text-[var(--color-accent)]" },
+  loading: { label: "Loading", dot: "bg-[var(--color-accent)] animate-pulse", text: "text-[var(--color-accent)]" },
+  not_loaded: { label: "Not Loaded", dot: "bg-[var(--color-ink-mute)]", text: "text-[var(--color-ink-mute)]" },
+  skipped: { label: "Later Phase", dot: "bg-[var(--color-ink-mute)]", text: "text-[var(--color-ink-mute)]" },
+  error: { label: "Error", dot: "bg-[var(--color-accent)]", text: "text-[var(--color-accent)]" },
 };
 
 export function RuntimePanel() {
@@ -100,36 +100,36 @@ export function RuntimePanel() {
     .map((s) => s.id);
 
   return (
-    <div className="space-y-4 font-sans">
+    <div className="space-y-4 font-sans text-[var(--color-ink)]">
       {/* Backend Hardware Profile Card */}
-      <div className="hallmark-card p-3.5 space-y-2">
+      <div className="hallmark-card p-3.5 space-y-2.5 bg-[var(--color-paper-2)]">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold text-white font-mono uppercase tracking-wider">
+          <h2 className="text-xs font-mono-press font-bold uppercase tracking-wider text-[var(--color-ink)]">
             Hardware Execution Profile
           </h2>
           <button
             onClick={() => void refresh()}
-            className="hallmark-button text-[10px] px-2 py-0.5 font-mono uppercase text-gray-300"
+            className="hallmark-button text-[10px] px-2 py-0.5 font-mono-press uppercase"
           >
             Refresh
           </button>
         </div>
 
         {backend ? (
-          <div className="space-y-2 font-mono">
+          <div className="space-y-2 font-mono-press">
             <div className="flex items-center gap-2">
               <span
-                className={`text-[9px] font-mono px-2 py-0.5 rounded border uppercase ${
+                className={`text-[9px] font-mono-press font-bold px-2 py-0.5 uppercase ${
                   TIER_META[backend.tier]?.cls ?? ""
                 }`}
               >
                 Tier {backend.tier}
               </span>
-              <span className="text-[11px] text-gray-300">
+              <span className="text-[11px] font-semibold text-[var(--color-ink)]">
                 {TIER_META[backend.tier]?.label}
               </span>
             </div>
-            <p className="text-[10px] text-gray-400 leading-relaxed font-light">
+            <p className="text-[11px] text-[var(--color-ink-2)] leading-relaxed font-body-editorial font-medium">
               {backend.summary}
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1">
@@ -139,14 +139,14 @@ export function RuntimePanel() {
             </div>
           </div>
         ) : (
-          <div className="text-[11px] text-gray-500 font-mono">
+          <div className="text-[11px] text-[var(--color-ink-mute)] font-mono-press">
             Detecting hardware runtime profile...
           </div>
         )}
       </div>
 
       {/* Warm-Up Action Buttons */}
-      <div className="flex gap-2 font-mono">
+      <div className="flex gap-2 font-mono-press">
         <button
           disabled={busy || ocrIds.length === 0}
           onClick={() => void warm(ocrIds)}
@@ -157,21 +157,23 @@ export function RuntimePanel() {
         <button
           disabled={busy || allEligible.length === 0}
           onClick={() => void warm(allEligible)}
-          className="flex-1 hallmark-button text-[10px] py-2 uppercase text-gray-300 hover:text-white disabled:opacity-40"
+          className="flex-1 hallmark-button text-[10px] py-2 uppercase disabled:opacity-40"
         >
           Warm All Eligible
         </button>
       </div>
 
       {error && (
-        <div className="hallmark-card p-2.5 border-rose-500/30 bg-rose-500/5 text-xs text-rose-300 font-mono">
+        <div className="hallmark-card p-2.5 border-2 border-[var(--color-accent)] bg-[#faebe8] text-xs text-[var(--color-accent)] font-mono-press font-bold">
           {error}
         </div>
       )}
 
       {/* ONNX Models Inventory */}
-      <div className="space-y-2 font-mono">
-        <span className="text-[10px] text-gray-500 uppercase tracking-widest block font-medium">On-Device Vision Models</span>
+      <div className="space-y-2 font-mono-press">
+        <span className="text-[10px] text-[var(--color-ink-mute)] font-bold uppercase tracking-widest block">
+          On-Device Vision Models
+        </span>
         {statuses.map((s) => (
           <ModelRow key={s.id} s={s} />
         ))}
@@ -183,10 +185,10 @@ export function RuntimePanel() {
 function Cap({ on, label }: { on: boolean; label: string }) {
   return (
     <span
-      className={`text-[9px] font-mono px-2 py-0.5 rounded border uppercase ${
+      className={`text-[9px] font-mono-press font-bold px-2 py-0.5 uppercase border-2 ${
         on
-          ? "border-emerald-500/20 text-emerald-400 bg-emerald-500/10"
-          : "border-gray-800 text-gray-600 bg-[#12141d]"
+          ? "border-[var(--color-ink)] text-[var(--color-paper)] bg-[#006669]"
+          : "border-[var(--color-ink)] text-[var(--color-paper)] bg-[var(--color-ink)]"
       }`}
     >
       {on ? "PASS" : "OFF"} {label}
@@ -200,28 +202,28 @@ function ModelRow({ s }: { s: ModelStatus }) {
   const showBar = s.state === "downloading" || s.state === "loading";
 
   return (
-    <div className="hallmark-card p-2.5 space-y-1">
+    <div className="hallmark-card p-3 space-y-1 bg-[var(--color-paper)]">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
-          <span className="text-xs text-gray-200 truncate font-semibold">{s.name}</span>
+          <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
+          <span className="text-xs text-[var(--color-ink)] font-bold font-mono-press truncate">{s.name}</span>
         </div>
-        <span className={`text-[10px] font-mono shrink-0 uppercase ${meta.text}`}>{meta.label}</span>
+        <span className={`text-[10px] font-mono-press font-bold shrink-0 uppercase ${meta.text}`}>{meta.label}</span>
       </div>
-      <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono">
+      <div className="flex items-center justify-between text-[10px] text-[var(--color-ink-mute)] font-mono-press font-semibold">
         <span>{fmtBytes(s.sizeBytes)}</span>
-        {s.required && <span className="uppercase text-gray-400">Required</span>}
+        {s.required && <span className="uppercase text-[var(--color-accent)] font-bold">Required</span>}
       </div>
       {showBar && (
-        <div className="h-1 bg-[#181b28] rounded overflow-hidden border border-[#25293c]">
+        <div className="h-2 bg-[var(--color-paper-3)] border border-[var(--color-ink)] overflow-hidden mt-1">
           <div
-            className="h-full bg-sky-400 transition-all duration-200"
+            className="h-full bg-[var(--color-accent)] transition-all duration-200"
             style={{ width: `${pct}%` }}
           />
         </div>
       )}
       {s.error && (
-        <p className="text-[10px] text-rose-400 truncate" title={s.error}>
+        <p className="text-[10px] text-[var(--color-accent)] font-mono-press font-bold truncate" title={s.error}>
           {s.error}
         </p>
       )}

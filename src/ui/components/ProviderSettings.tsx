@@ -1,327 +1,294 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  loadProviderConfigs,
-  saveProviderConfigs,
-} from "../../core/agent/llm-providers";
+import { useCallback, useEffect, useState } from "react";
+import type { ProviderConfig, ProviderID } from "../../core/agent/llm-providers";
 
-type ProviderID = "ollama" | "claude" | "openai" | "openrouter";
-
-interface ProviderConfig {
-  id: ProviderID;
-  name: string;
-  enabled: boolean;
-  apiKey?: string;
-  baseUrl?: string;
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
+function send<T = unknown>(type: string, payload?: unknown): Promise<T> {
+  return chrome.runtime.sendMessage({
+    type,
+    payload,
+    source: "sidepanel",
+    timestamp: Date.now(),
+  }) as Promise<T>;
 }
-
-interface ProviderStatus {
-  id: ProviderID;
-  name: string;
-  available: boolean;
-  model: string | null;
-  latencyMs: number;
-  error?: string;
-}
-
-const PROVIDER_INFO: Record<
-  ProviderID,
-  {
-    name: string;
-    description: string;
-    defaultModel: string;
-    needsKey: boolean;
-    setupUrl: string;
-    models: string[];
-  }
-> = {
-  ollama: {
-    name: "Ollama (Local)",
-    description: "Free local execution. No API key needed.",
-    defaultModel: "qwen2.5:1.5b",
-    needsKey: false,
-    setupUrl: "https://ollama.ai/download",
-    models: ["qwen2.5:1.5b", "qwen2.5:3b", "gemma2:2b", "phi3.5-mini", "llama3.2:1b"],
-  },
-  claude: {
-    name: "Claude (Anthropic)",
-    description: "High-reasoning cloud planner.",
-    defaultModel: "claude-3-5-haiku-20241022",
-    needsKey: true,
-    setupUrl: "https://console.anthropic.com/settings/keys",
-    models: ["claude-3-5-haiku-20241022", "claude-3-haiku-20240307", "claude-3-opus-20240229"],
-  },
-  openai: {
-    name: "OpenAI (GPT)",
-    description: "Fast cloud reasoning provider.",
-    defaultModel: "gpt-4o-mini",
-    needsKey: true,
-    setupUrl: "https://platform.openai.com/api-keys",
-    models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
-  },
-  openrouter: {
-    name: "OpenRouter",
-    description: "Universal open-weight model router.",
-    defaultModel: "meta-llama/llama-3.2-1b-instruct",
-    needsKey: true,
-    setupUrl: "https://openrouter.ai/keys",
-    models: [
-      "meta-llama/llama-3.2-1b-instruct",
-      "meta-llama/llama-3.2-3b-instruct",
-      "mistralai/mistral-7b-instruct",
-      "google/gemma-2-2b-it",
-      "microsoft/phi-3.5-mini-instruct",
-    ],
-  },
-};
 
 export function ProviderSettings() {
-  const [configs, setConfigs] = useState<Record<ProviderID, ProviderConfig> | null>(null);
-  const [statuses, setStatuses] = useState<ProviderStatus[]>([]);
-  const [expandedId, setExpandedId] = useState<ProviderID | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [providers, setProviders] = useState<ProviderConfig[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    loadProviderConfigs()
-      .then((loaded) => {
-        if (!cancelled) setConfigs(loaded);
-      })
-      .catch(() => {
-        if (!cancelled) setConfigs(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Form state per provider
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [models, setModels] = useState<Record<string, string>>({});
+  const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
 
-  const checkProviders = useCallback(async () => {
-    setChecking(true);
+  const [testing, setTesting] = useState(false);
+  const [testResults, setTestResults] = useState<
+    Record<string, { ok: boolean; latencyMs?: number; error?: string }>
+  >({});
+
+  const reload = useCallback(async () => {
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: "CHECK_PROVIDERS",
-        source: "sidepanel",
-        timestamp: Date.now(),
-      });
-      if (response?.statuses) {
-        setStatuses(response.statuses);
-      }
-    } catch {
-      try {
-        const resp = await fetch("http://localhost:11434/api/tags", {
-          signal: AbortSignal.timeout(3000),
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          const models = (data.models || []).map((m: { name: string }) => m.name);
-          setStatuses([
-            {
-              id: "ollama",
-              name: "Ollama (Local)",
-              available: models.length > 0,
-              model: models[0] || null,
-              latencyMs: 0,
-              error: models.length === 0 ? "No models pulled" : undefined,
-            },
-            { id: "claude", name: "Claude", available: false, model: null, latencyMs: 0, error: "Disabled" },
-            { id: "openai", name: "OpenAI", available: false, model: null, latencyMs: 0, error: "Disabled" },
-            { id: "openrouter", name: "OpenRouter", available: false, model: null, latencyMs: 0, error: "Disabled" },
-          ]);
+      const [list, act] = await Promise.all([
+        send<ProviderConfig[]>("GET_PROVIDERS"),
+        send<string | null>("GET_ACTIVE_PROVIDER"),
+      ]);
+      setProviders(list || []);
+      setActive(act);
+
+      const kMap: Record<string, string> = {};
+      const mMap: Record<string, string> = {};
+      const uMap: Record<string, string> = {};
+
+      if (list) {
+        for (const p of list) {
+          kMap[p.id] = p.apiKey ?? "";
+          mMap[p.id] = p.model ?? p.defaultModel ?? "";
+          uMap[p.id] = p.baseUrl ?? p.defaultBaseUrl ?? "";
         }
-      } catch {
-        setStatuses([
-          {
-            id: "ollama",
-            name: "Ollama (Local)",
-            available: false,
-            model: null,
-            latencyMs: 0,
-            error: "Not running (start Ollama locally)",
-          },
-          { id: "claude", name: "Claude", available: false, model: null, latencyMs: 0, error: "Disabled" },
-          { id: "openai", name: "OpenAI", available: false, model: null, latencyMs: 0, error: "Disabled" },
-          { id: "openrouter", name: "OpenRouter", available: false, model: null, latencyMs: 0, error: "Disabled" },
-        ]);
       }
-    } finally {
-      setChecking(false);
+      setKeys(kMap);
+      setModels(mMap);
+      setBaseUrls(uMap);
+    } catch (e) {
+      console.error("Failed to load providers:", e);
     }
   }, []);
 
   useEffect(() => {
-    checkProviders();
-  }, [checkProviders]);
+    void reload();
+  }, [reload]);
 
-  const saveConfig = async (id: ProviderID, partial: Partial<ProviderConfig>) => {
-    if (!configs) return;
-    const updated = {
-      ...configs,
-      [id]: { ...configs[id], ...partial },
+  const handleSave = async (id: ProviderID) => {
+    const p = providers.find((pr) => pr.id === id);
+    if (!p) return;
+
+    const updatePayload: ProviderConfig = {
+      ...p,
+      enabled: p.enabled,
+      apiKey: keys[id] || undefined,
+      model: models[id] || p.defaultModel,
+      baseUrl: baseUrls[id] || p.defaultBaseUrl,
     };
-    setConfigs(updated);
-    setSaving(id);
+
+    await send("SAVE_PROVIDER", updatePayload);
+    await reload();
+  };
+
+  const handleToggle = async (id: ProviderID, currentEnabled: boolean) => {
+    const p = providers.find((pr) => pr.id === id);
+    if (!p) return;
+
+    await send("SAVE_PROVIDER", { ...p, enabled: !currentEnabled });
+    await reload();
+  };
+
+  const handleSetActive = async (id: ProviderID) => {
+    await send("SET_ACTIVE_PROVIDER", { name: id });
+    setActive(id);
+  };
+
+  const handleTestAll = async () => {
+    setTesting(true);
+    setTestResults({});
     try {
-      await saveProviderConfigs(updated);
-      await checkProviders();
-    } catch (err) {
-      console.error("Save config failed:", err);
+      const results = await send<
+        Record<string, { ok: boolean; latencyMs?: number; error?: string }>
+      >("TEST_PROVIDERS");
+      setTestResults(results || {});
+    } catch {
+      // Ignore
     } finally {
-      setSaving(null);
+      setTesting(false);
     }
   };
 
-  if (!configs) {
-    return <div className="p-4 text-xs font-mono text-gray-500">Loading AI provider configuration...</div>;
-  }
-
-  const activeProvider = statuses.find((s) => s.available);
+  const activeProvider = providers.find((p) => p.id === active);
 
   return (
-    <div className="space-y-4 font-sans">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 font-sans text-[var(--color-ink)]">
+      {/* Title Bar */}
+      <div className="flex items-center justify-between border-b-2 border-[var(--color-ink)] pb-2">
         <div>
-          <h2 className="text-xs font-semibold text-white font-mono uppercase tracking-wider">AI Providers</h2>
-          <p className="text-[10px] text-gray-400 font-light">Configure LLM planners for browser automation.</p>
+          <h2 className="text-xs font-mono-press font-bold uppercase tracking-wider text-[var(--color-ink)]">
+            AI Providers
+          </h2>
+          <p className="text-[11px] font-body-editorial text-[var(--color-ink-2)] font-medium">
+            Configure LLM planners for browser automation.
+          </p>
         </div>
         <button
-          onClick={checkProviders}
-          disabled={checking}
-          className="hallmark-button text-[10px] px-2.5 py-1 font-mono uppercase text-gray-300 hover:text-white"
+          onClick={() => void handleTestAll()}
+          disabled={testing}
+          className="hallmark-button text-[10px] px-2.5 py-1 font-mono-press uppercase disabled:opacity-40"
         >
-          {checking ? "Testing..." : "Test Providers"}
+          {testing ? "Testing..." : "Test Providers"}
         </button>
       </div>
 
-      {/* Active Banner */}
-      <div className="hallmark-card p-3 border-emerald-500/20 bg-emerald-500/5 font-mono text-xs">
+      {/* Active Planner Summary */}
+      <div className="hallmark-card p-3 space-y-1 bg-[var(--color-paper-2)] border-2 border-[var(--color-ink)]">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-gray-400 uppercase tracking-widest">Active Planner</span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-400 text-black font-semibold uppercase">
-            {activeProvider ? activeProvider.name : "None Available"}
+          <span className="text-[9px] uppercase tracking-widest text-[var(--color-ink-mute)] font-mono-press font-bold">
+            Active Planner
           </span>
+          {activeProvider && (
+            <span className="text-[10px] font-mono-press uppercase font-bold px-2 py-0.5 bg-[#006669] text-[var(--color-paper)] border border-[var(--color-ink)]">
+              {activeProvider.name}
+            </span>
+          )}
         </div>
-        {activeProvider && (
-          <p className="text-[10px] text-gray-300 mt-1 font-light">
-            Model: <span className="font-mono text-white">{activeProvider.model}</span> ({activeProvider.latencyMs.toFixed(0)}ms)
+        {activeProvider ? (
+          <p className="text-xs font-mono-press font-semibold text-[var(--color-ink)]">
+            Model: {models[activeProvider.id] || activeProvider.defaultModel || activeProvider.model}
+            {testResults[activeProvider.id]?.latencyMs && (
+              <span className="text-[var(--color-ink-mute)] ml-2">
+                ({testResults[activeProvider.id].latencyMs}ms)
+              </span>
+            )}
+          </p>
+        ) : (
+          <p className="text-xs font-mono-press text-[var(--color-accent)] font-bold">
+            No active provider selected. Select one below.
           </p>
         )}
       </div>
 
-      {/* Providers List */}
-      <div className="space-y-2">
-        {(Object.keys(PROVIDER_INFO) as ProviderID[]).map((id) => {
-          const info = PROVIDER_INFO[id];
-          const config = configs[id];
-          const status = statuses.find((s) => s.id === id);
-          const isExpanded = expandedId === id;
+      {/* Provider List */}
+      <div className="space-y-2 font-mono-press">
+        {providers.map((p) => {
+          const isAct = active === p.id;
+          const isExp = expanded === p.id;
+          const res = testResults[p.id];
 
           return (
-            <div key={id} className="hallmark-card overflow-hidden">
-              <button
-                onClick={() => setExpandedId(isExpanded ? null : id)}
-                className="w-full flex items-center justify-between p-3 text-left hover:bg-[#141722] transition-colors"
-              >
-                <div className="flex items-center gap-2 font-mono">
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      status?.available
-                        ? "bg-emerald-400"
-                        : config.enabled
-                          ? "bg-amber-400"
-                          : "bg-gray-600"
+            <div
+              key={p.id}
+              className={`hallmark-card border-2 transition-all bg-[var(--color-paper-2)] ${
+                isAct ? "border-[var(--color-accent)] shadow-md" : "border-[var(--color-ink)]"
+              }`}
+            >
+              {/* Card Header */}
+              <div className="p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    onClick={() => void handleSetActive(p.id)}
+                    title={isAct ? "Active planner" : "Set as active"}
+                    className={`w-4 h-4 rounded-full border-2 border-[var(--color-ink)] transition-colors ${
+                      isAct ? "bg-[var(--color-accent)]" : "bg-[var(--color-paper)]"
                     }`}
                   />
-                  <div>
-                    <span className="text-xs font-semibold text-gray-200">{info.name}</span>
-                    <span className="text-[10px] text-gray-500 ml-2">
-                      {config.model || info.defaultModel}
-                    </span>
-                  </div>
+                  <span className="text-xs font-bold text-[var(--color-ink)] truncate font-mono-press">
+                    {p.name}
+                  </span>
+                  <span className="text-[10px] text-[var(--color-ink-mute)] truncate font-semibold">
+                    {models[p.id] || p.defaultModel || p.model}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  {config.enabled && (
-                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
-                      Enabled
-                    </span>
-                  )}
-                  <span className="text-gray-500 text-xs font-mono">{isExpanded ? "▲" : "▼"}</span>
-                </div>
-              </button>
 
-              {isExpanded && (
-                <div className="p-3 space-y-3 border-t border-[#1e2233] bg-[#0f1118] font-sans">
-                  <p className="text-[11px] text-gray-400 font-light">{info.description}</p>
-
-                  <div className="flex items-center justify-between font-mono text-xs">
-                    <span className="text-gray-400 uppercase text-[10px]">Enable Provider</span>
-                    <button
-                      onClick={() => saveConfig(id, { enabled: !config.enabled })}
-                      className={`w-9 h-5 rounded-full transition-colors relative ${
-                        config.enabled ? "bg-emerald-500" : "bg-gray-700"
+                <div className="flex items-center gap-2 shrink-0">
+                  {res && (
+                    <span
+                      className={`text-[9px] font-mono-press font-bold uppercase px-1.5 py-0.5 ${
+                        res.ok ? "text-[#006669]" : "text-[var(--color-accent)]"
                       }`}
                     >
-                      <div
-                        className={`w-3.5 h-3.5 bg-white rounded-full transition-transform absolute top-0.75 ${
-                          config.enabled ? "left-4.5" : "left-0.75"
-                        }`}
+                      {res.ok ? `${res.latencyMs}ms` : "Failed"}
+                    </span>
+                  )}
+
+                  <button
+                    onClick={() => void handleToggle(p.id, p.enabled)}
+                    className={`text-[9px] font-mono-press font-bold uppercase px-2 py-0.5 border border-[var(--color-ink)] ${
+                      p.enabled
+                        ? "bg-[var(--color-ink)] text-[var(--color-paper)]"
+                        : "bg-[var(--color-paper-3)] text-[var(--color-ink-mute)]"
+                    }`}
+                  >
+                    {p.enabled ? "Enabled" : "Disabled"}
+                  </button>
+
+                  <button
+                    onClick={() => setExpanded(isExp ? null : p.id)}
+                    className="text-[10px] text-[var(--color-ink)] hover:text-[var(--color-accent)] font-bold px-1"
+                  >
+                    {isExp ? "▲" : "▼"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Expanded Config Form */}
+              {isExp && (
+                <div className="px-3 pb-3 pt-1 border-t-2 border-[var(--color-hairline)] space-y-3 font-mono-press bg-[var(--color-paper-2)]">
+                  {p.requiresApiKey && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-[var(--color-ink)] uppercase block">
+                        API Key
+                      </label>
+                      <input
+                        type="password"
+                        value={keys[p.id] ?? ""}
+                        onChange={(e) =>
+                          setKeys((prev) => ({ ...prev, [p.id]: e.target.value }))
+                        }
+                        placeholder={p.id === "ollama" ? "Not required" : "sk-..."}
+                        className="w-full hallmark-input px-2.5 py-1.5 text-xs text-[var(--color-ink)] font-mono-press font-semibold"
                       />
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[var(--color-ink)] uppercase block">
+                      Model ID
+                    </label>
+                    {p.availableModels && p.availableModels.length > 0 ? (
+                      <select
+                        value={models[p.id] ?? p.defaultModel ?? p.model}
+                        onChange={(e) =>
+                          setModels((prev) => ({ ...prev, [p.id]: e.target.value }))
+                        }
+                        className="w-full hallmark-input px-2.5 py-1.5 text-xs text-[var(--color-ink)] font-mono-press font-semibold"
+                      >
+                        {p.availableModels.map((m: string) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={models[p.id] ?? p.defaultModel ?? p.model}
+                        onChange={(e) =>
+                          setModels((prev) => ({ ...prev, [p.id]: e.target.value }))
+                        }
+                        className="w-full hallmark-input px-2.5 py-1.5 text-xs text-[var(--color-ink)] font-mono-press font-semibold"
+                      />
+                    )}
+                  </div>
+
+                  {p.id === "ollama" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-[var(--color-ink)] uppercase block">
+                        Base URL
+                      </label>
+                      <input
+                        type="text"
+                        value={baseUrls[p.id] ?? "http://localhost:11434"}
+                        onChange={(e) =>
+                          setBaseUrls((prev) => ({ ...prev, [p.id]: e.target.value }))
+                        }
+                        className="w-full hallmark-input px-2.5 py-1.5 text-xs text-[var(--color-ink)] font-mono-press font-semibold"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      onClick={() => void handleSave(p.id)}
+                      className="hallmark-button-primary text-[10px] px-3 py-1 uppercase font-bold"
+                    >
+                      Save Configuration
                     </button>
                   </div>
-
-                  {info.needsKey && (
-                    <div className="space-y-1 font-mono">
-                      <label className="text-[10px] text-gray-400 uppercase tracking-widest block">API Key</label>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="password"
-                          value={config.apiKey || ""}
-                          onChange={(e) => saveConfig(id, { apiKey: e.target.value })}
-                          placeholder="sk-..."
-                          className="flex-1 text-xs font-mono hallmark-input px-2.5 py-1 text-gray-200 focus:outline-none"
-                        />
-                        <a
-                          href={info.setupUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hallmark-button text-[10px] px-2.5 py-1 text-gray-400 hover:text-white uppercase shrink-0"
-                        >
-                          Get Key ↗
-                        </a>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-1 font-mono">
-                    <label className="text-[10px] text-gray-400 uppercase tracking-widest block">Model Selection</label>
-                    <select
-                      value={config.model || info.defaultModel}
-                      onChange={(e) => saveConfig(id, { model: e.target.value })}
-                      className="w-full text-xs font-mono hallmark-input px-2.5 py-1 text-gray-200 focus:outline-none"
-                    >
-                      {info.models.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {id === "ollama" && !status?.available && (
-                    <div className="hallmark-card p-2.5 text-[10px] font-mono text-gray-400 space-y-1 bg-[#12141d]">
-                      <p className="text-gray-300 font-semibold uppercase">Ollama Setup Command:</p>
-                      <code className="block bg-[#090a0f] p-2 rounded text-emerald-400 text-xs">
-                        ollama pull qwen2.5:1.5b
-                      </code>
-                    </div>
-                  )}
-
-                  {saving === id && (
-                    <span className="text-[10px] font-mono text-sky-400">Saving changes...</span>
-                  )}
                 </div>
               )}
             </div>
