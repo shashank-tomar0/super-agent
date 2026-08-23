@@ -1,140 +1,221 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;700;800;900&family=Fraunces:ital,opsz,wght@0,9..40,400;0,9..40,600;1,9..40,400&family=Spline+Sans+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base & Typography ─────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────
+ * Hallmark · Custom-04 "The Mend Assembly" Riso Broadsheet DNA
+ * Paper: oklch(94% 0.012 85) #f5f2e9
+ * Ink: oklch(24% 0.018 65) #28231d
+ * Accent: Riso Vermilion #e23829
+ * Fonts: Big Shoulders Display, Fraunces, Spline Sans Mono
+ * ───────────────────────────────────────────────────────────── */
 
-* {
+:root {
+  --color-paper: #f5f2e9;
+  --color-paper-2: #ece7da;
+  --color-paper-3: #ded7c5;
+  --color-ink: #28231d;
+  --color-ink-2: #3e3831;
+  --color-ink-mute: #6b6256;
+  --color-rule: #4a4338;
+  --color-hairline: #d2cbba;
+  --color-accent: #e23829;
+  --color-teal: #00888c;
+
+  --font-display: "Big Shoulders Display", sans-serif;
+  --font-body: "Fraunces", Georgia, serif;
+  --font-mono: "Spline Sans Mono", monospace;
+}
+
+*, *::before, *::after {
   box-sizing: border-box;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI",
-    Roboto, sans-serif;
+  background-color: var(--color-paper);
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #090a0f;
-  color: #f3f4f6;
   overflow-x: hidden;
 }
 
-.font-serif-title {
-  font-family: 'Instrument Serif', serif;
+/* Paper texture & Halftone grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(rgba(40, 35, 29, 0.05) 0.8px, transparent 0.9px);
+  background-size: 5px 5px;
 }
 
-.font-mono-code {
-  font-family: 'JetBrains Mono', monospace;
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: repeating-linear-gradient(115deg, rgba(40, 35, 29, 0.03) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
 }
 
-/* ── Hallmark Custom-04 Precision Studio (Solid Dark) ──────── */
+/* Custom Broadsheet Typography Classes */
+.font-display-poster {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 0.95;
+}
 
-/* Card Container: Solid Dark Matte #11131b, 1px crisp border, no glass blur */
+.font-body-editorial {
+  font-family: var(--font-body);
+}
+
+.font-mono-press {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* Hallmark Custom-04 Broadsheet Cards & Controls */
 .hallmark-card {
-  background: #11131b;
-  border: 1px solid #1e212d;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  background: var(--color-paper);
+  border: 2px solid var(--color-ink);
+  box-shadow: 3px 3px 0px var(--color-ink);
+  color: var(--color-ink);
 }
 
-/* Input Fields: Solid Matte #161922 with subtle crisp border */
+.hallmark-card-accent {
+  background: var(--color-accent);
+  color: var(--color-paper);
+  border: 2px solid var(--color-ink);
+  box-shadow: 3px 3px 0px var(--color-ink);
+}
+
 .hallmark-input {
-  background: #161922;
-  border: 1px solid #252938;
-  border-radius: 12px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  background: var(--color-paper-2);
+  border: 2px solid var(--color-ink);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s ease;
 }
 
 .hallmark-input:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px #3b82f6;
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
-/* Button: Solid Dark / High-Contrast Action */
 .hallmark-button {
-  background: #181b26;
-  border: 1px solid #282c3f;
-  color: #e5e7eb;
-  border-radius: 10px;
-  transition: all 0.15s ease;
+  background: var(--color-paper-2);
+  border: 2px solid var(--color-ink);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: 2px 2px 0px var(--color-ink);
+  transition: all 0.1s ease;
 }
 
 .hallmark-button:hover {
-  background: #222636;
-  border-color: #3b425b;
-  color: #ffffff;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--color-ink);
 }
 
 .hallmark-button:active {
-  background: #141720;
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px var(--color-ink);
 }
 
-/* Primary Action Button: High Contrast Solid White */
 .hallmark-button-primary {
-  background: #ffffff;
-  color: #090a0f;
+  background: var(--color-accent);
+  border: 2px solid var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
   font-weight: 600;
-  border-radius: 10px;
-  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: 2px 2px 0px var(--color-ink);
+  transition: all 0.1s ease;
 }
 
 .hallmark-button-primary:hover {
-  background: #e5e7eb;
-  transform: translateY(-0.5px);
+  background: var(--color-ink);
+  color: var(--color-paper);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--color-ink);
 }
 
-/* ── Custom Scrollbar ──────────────────────────────────────── */
+/* Broadsheet Press Corner Crop Marks */
+.press-crop-tl {
+  border-top: 2px solid var(--color-ink);
+  border-left: 2px solid var(--color-ink);
+}
+.press-crop-tr {
+  border-top: 2px solid var(--color-ink);
+  border-right: 2px solid var(--color-ink);
+}
+.press-crop-bl {
+  border-bottom: 2px solid var(--color-ink);
+  border-left: 2px solid var(--color-ink);
+}
+.press-crop-br {
+  border-bottom: 2px solid var(--color-ink);
+  border-right: 2px solid var(--color-ink);
+}
 
+/* Riso Mis-registration Ghost Effect */
+.riso-ghost {
+  position: relative;
+  display: inline-block;
+}
+
+.riso-ghost::after {
+  content: attr(data-text);
+  position: absolute;
+  left: -2px;
+  top: 1px;
+  color: var(--color-teal);
+  z-index: -1;
+  opacity: 0.7;
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #090a0f;
+  background: var(--color-paper-2);
+  border-left: 1px solid var(--color-hairline);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e212d;
-  border-radius: 4px;
+  background: var(--color-ink);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2e3346;
+  background: var(--color-accent);
 }
-
-/* ── Animations ────────────────────────────────────────────── */
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.animate-pulse-dot {
-  animation: pulse-dot 1.8s ease-in-out infinite;
-}
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out;
-}
-
-/* ── Selection & Focus ─────────────────────────────────────── */
 
 ::selection {
-  background: #3b82f6;
-  color: white;
+  background: var(--color-accent);
+  color: var(--color-paper);
 }
 
 :focus-visible {
-  outline: 1px solid #3b82f6;
-  outline-offset: 1px;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
