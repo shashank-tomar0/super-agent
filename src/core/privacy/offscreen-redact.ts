@@ -9,13 +9,7 @@
 import { runOcr } from "../ocr/ocr-engine";
 import { scanTextForPII } from "./pii-detector";
 import type { OcrResult } from "../../types/runtime";
-import {
-  verifyAadhaarChecksum,
-  verifyLuhn,
-  verifyPANFormat,
-  verifyIFSCFormat,
-  verifyIndianPhone,
-} from "./pii-detector";
+
 
 // ── Types ────────────────────────────────────────────────────
 

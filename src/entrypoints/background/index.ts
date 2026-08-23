@@ -24,7 +24,6 @@ import type { ModelId, OcrResult } from "../../types/runtime";
 import { log } from "../../core/agent/learning-log";
 import { startMonitoring, stopMonitoring, isClean, getStats } from "../../core/privacy/network-monitor";
 import { getEgressStats, recordPageObservations } from "../../core/privacy/egress-guard";
-import { validateForm } from "../../core/agent/validator";
 import { callOffscreen, isRuntimeEnvelope } from "../../core/runtime/messaging";
 
 // ── Lazy imports: HEAVY modules loaded on-demand ──────────
@@ -437,7 +436,7 @@ export default defineBackground({
           piiDetection: { regions: [], summary: { totalRegions: 0, criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, byCategory: {} as any, bySource: { dom: 0, vision: 0, combined: 0 }, overallConfidence: 0, detectionTimeMs: 0 }, sanitizedDOMMetadata: { safeElements: [], safeTextContent: "", safeForms: [], pageMetadata: { title: "", url: "", hasForm: false, hasCAPTCHA: false, elementCount: 0 } } },
           redactionSummary: { totalPII: 0, redacted: 0, cssInjected: false, overlayShown: false },
           planResult: { success: false, steps: [], reasoning: "", provider: "none", latencyMs: 0 },
-          privacyProof: { sensitiveDataDetected: 0, sensitiveDataRedacted: 0, dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false }, zeroOutboundPII: true, redactionVerified: false, proofDescription: "" },
+          privacyProof: { sensitiveDataDetected: 0, sensitiveDataRedacted: 0, dataSentToServer: { rawScreenshot: false, formValues: false, piiText: false, faces: false, sanitizedStructure: false, taskDescription: false }, zeroOutboundPII: true, proofDescription: "" },
           reasoningTrace: null,
           latency: { capture: 0, ocr: 0, piiDetection: 0, redaction: 0, verification: 0, planning: 0, execution: 0, total: 0, backend: "error", tier: "error" },
           totalLatencyMs: 0,
