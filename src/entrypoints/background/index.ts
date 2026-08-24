@@ -206,6 +206,38 @@ export default defineBackground({
           return getStats();
         case "CHECK_PROVIDERS":
           return handleCheckProviders();
+        case "GET_PROVIDERS": {
+          const llm = await lazyLLMProviders();
+          const configs = await llm.loadProviderConfigs();
+          return Object.values(configs);
+        }
+        case "GET_ACTIVE_PROVIDER": {
+          const stored = await chrome.storage.local.get("vless_active_provider");
+          return stored.vless_active_provider || "ollama";
+        }
+        case "SAVE_PROVIDER": {
+          const p = message.payload as any;
+          if (p && p.id) {
+            const llm = await lazyLLMProviders();
+            await llm.saveProviderConfig(p.id, p);
+            return { success: true };
+          }
+          return { error: "Invalid payload" };
+        }
+        case "SET_ACTIVE_PROVIDER": {
+          const activeId = (message.payload as any)?.name || (message.payload as any)?.id || "ollama";
+          await chrome.storage.local.set({ vless_active_provider: activeId });
+          return { success: true, activeProvider: activeId };
+        }
+        case "TEST_PROVIDERS": {
+          const llm = await lazyLLMProviders();
+          const statuses = await llm.checkProviders();
+          const map: Record<string, { ok: boolean; latencyMs?: number; error?: string }> = {};
+          for (const s of statuses) {
+            map[s.id] = { ok: s.available, latencyMs: s.latencyMs, error: s.error };
+          }
+          return map;
+        }
         case "DO_CAPTURE_TAB":
           return handleCaptureTab();
         case "GET_TRIPWIRE_STATS":

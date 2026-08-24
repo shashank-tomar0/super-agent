@@ -323,7 +323,13 @@ export type MessageType =
   | "GET_BACKEND"
   | "GET_MODEL_STATUSES"
   | "WARM_MODELS"
-  | "RUN_OCR";
+  | "RUN_OCR"
+  // ── Provider management ──
+  | "GET_PROVIDERS"
+  | "GET_ACTIVE_PROVIDER"
+  | "SAVE_PROVIDER"
+  | "SET_ACTIVE_PROVIDER"
+  | "TEST_PROVIDERS";
 
 export interface Message<T = unknown> {
   type: MessageType;
