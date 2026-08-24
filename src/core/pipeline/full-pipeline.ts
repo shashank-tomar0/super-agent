@@ -1311,10 +1311,23 @@ function generateRuleBasedPlan(
   }
 
   // Search on a site: "search X on youtube", "find X on google"
-  const searchMatch = lower.match(/(?:search|find|look up|search for)\s+(.+?)\s+(?:on|in|at)\s+(\S+)/);
-  if (searchMatch) {
-    const query = searchMatch[1].trim();
-    const site = searchMatch[2].trim();
+  // BUG-FIX: Previous regex required "on|in|at" between query and site name,
+  // so "search harkirat singh youtube channel" or "open harkirat singh youtube"
+  // would not match at all and fall through to rule-based with 0 steps.
+  // Now handles both "search X on youtube" AND "find X youtube".
+  const searchMatch =
+    lower.match(/(?:search|find|look\s*up|search\s*for)\s+(.+?)\s+(?:on|in|at)\s+([\w.]+)/) ||
+    lower.match(/(?:search|find|look\s*up|search\s*for)\s+(.+?)\s+(youtube|google|bing|amazon|flipkart|github)\b/);
+
+  // Also handle "open X youtube channel" / "find X on youtube channel"
+  const channelMatch =
+    !searchMatch &&
+    lower.match(/(.+?)\s+(?:youtube\s+channel|yt\s+channel|channel\s+on\s+youtube)/);
+
+  if (searchMatch || channelMatch) {
+    const query = (searchMatch ? searchMatch[1] : channelMatch![1]).trim();
+    const rawSite = searchMatch ? searchMatch[2].trim() : "youtube";
+    const site = rawSite.replace(/[^a-z0-9]/g, "");
     const siteUrls: Record<string, string> = {
       youtube: "https://www.youtube.com",
       google: "https://www.google.com",
@@ -1324,30 +1337,49 @@ function generateRuleBasedPlan(
       github: "https://github.com",
     };
     const baseUrl = siteUrls[site] || `https://www.${site}.com`;
-    steps.push({
-      index: idx++,
-      action: { id: `r-${idx}`, type: "navigate", value: baseUrl, retries: 0, maxRetries: 1 },
-      reasoning: `Navigate to ${site}`,
-      confidence: 0.9,
-      verification: "URL should change",
-      risk: "medium",
-    });
-    steps.push({
-      index: idx++,
-      action: { id: `r-${idx}`, type: "type", target: "search", value: query, retries: 0, maxRetries: 3 },
-      reasoning: `Search for "${query}" on ${site}`,
-      confidence: 0.85,
-      verification: "Search results should appear",
-      risk: "low",
-    });
-    steps.push({
-      index: idx++,
-      action: { id: `r-${idx}`, type: "press_key", key: "Enter", retries: 0, maxRetries: 1 },
-      reasoning: "Submit search",
-      confidence: 0.9,
-      verification: "Page should show results",
-      risk: "low",
-    });
+
+    // For YouTube channel searches, use the channel search URL directly
+    if (site === "youtube" && (channelMatch || lower.includes("channel"))) {
+      steps.push({
+        index: idx++,
+        action: {
+          id: `r-${idx}`,
+          type: "navigate",
+          value: `${baseUrl}/results?search_query=${encodeURIComponent(query)}`,
+          retries: 0,
+          maxRetries: 1,
+        },
+        reasoning: `Search YouTube for channel: "${query}"`,
+        confidence: 0.9,
+        verification: "YouTube search results should appear",
+        risk: "medium",
+      });
+    } else {
+      steps.push({
+        index: idx++,
+        action: { id: `r-${idx}`, type: "navigate", value: baseUrl, retries: 0, maxRetries: 1 },
+        reasoning: `Navigate to ${site}`,
+        confidence: 0.9,
+        verification: "URL should change",
+        risk: "medium",
+      });
+      steps.push({
+        index: idx++,
+        action: { id: `r-${idx}`, type: "type", target: "search", value: query, retries: 0, maxRetries: 3 },
+        reasoning: `Search for "${query}" on ${site}`,
+        confidence: 0.85,
+        verification: "Search results should appear",
+        risk: "low",
+      });
+      steps.push({
+        index: idx++,
+        action: { id: `r-${idx}`, type: "press_key", key: "Enter", retries: 0, maxRetries: 1 },
+        reasoning: "Submit search",
+        confidence: 0.9,
+        verification: "Page should show results",
+        risk: "low",
+      });
+    }
   }
 
   // Open a site by name: "open youtube", "go to google"

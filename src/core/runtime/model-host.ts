@@ -97,21 +97,35 @@ export async function getModelStatuses(): Promise<ModelStatus[]> {
 export async function warmModels(ids: ModelId[]): Promise<ModelStatus[]> {
   const be = await backend();
 
+  // BUG-FIX: Promise.all downloads ALL models concurrently. When Florence-2
+  // (333MB) and GLiNER (210MB) download simultaneously, the offscreen document
+  // runs out of ArrayBuffer memory, causing an unhandled rejection that crashes
+  // the extension service worker (the "VLESS has crashed" toast). 
+  // Fix: download models larger than 50MB sequentially, small ones in parallel.
+  const LARGE_MODEL_THRESHOLD = 50 * 1024 * 1024; // 50 MB
+
+  const smallIds = ids.filter((id) => {
+    const e = MODEL_REGISTRY[id];
+    return !e || (e.sizeBytes ?? 0) <= LARGE_MODEL_THRESHOLD;
+  });
+  const largeIds = ids.filter((id) => {
+    const e = MODEL_REGISTRY[id];
+    return e && (e.sizeBytes ?? 0) > LARGE_MODEL_THRESHOLD;
+  });
+
+  // Small models in parallel (safe)
   await Promise.all(
-    ids.map(async (id) => {
+    smallIds.map(async (id) => {
       const e = MODEL_REGISTRY[id];
       if (!e) return;
-
       if (!modelEligibleAtTier(id, be.tier)) {
         publish(id, { state: "skipped", progress: 0 });
         return;
       }
-
       if (e.kind === "onnx-local" || e.kind === "onnx-remote") {
         try {
           const url = resolveModelUrl(e, be);
           await fetchArrayBufferWithProgress(url, (p) => publish(id, p));
-          // Bytes are on-device. ORT session creation happens in P1.
           update(id, { state: "cached", progress: 1 });
         } catch (err) {
           publish(id, {
@@ -122,32 +136,57 @@ export async function warmModels(ids: ModelId[]): Promise<ModelStatus[]> {
         }
         return;
       }
-
-      // transformers.js models (Florence-2) manage their own fetch + cache.
-      // Previously this branch marked them "skipped", so the Models tab
-      // downloaded nothing and the weights were pulled lazily mid-pipeline.
-      if (e.kind === "transformersjs" && id === "florence2") {
-        try {
-          publish(id, { state: "downloading", progress: 0 });
-          const { warmFlorence } = await import("../perception/florence2-engine");
-          await warmFlorence((fraction) =>
-            publish(id, { state: "downloading", progress: fraction })
-          );
-          update(id, { state: "ready", progress: 1 });
-        } catch (err) {
-          publish(id, {
-            state: "error",
-            progress: 0,
-            error: String((err as Error)?.message ?? err),
-          });
-        }
-        return;
-      }
-
-      // webllm / mediapipe — initialized in later phases.
       publish(id, { state: "skipped", progress: 0 });
     }),
   );
+
+  // Large models one at a time (prevents OOM crash)
+  for (const id of largeIds) {
+    const e = MODEL_REGISTRY[id];
+    if (!e) continue;
+
+    if (!modelEligibleAtTier(id, be.tier)) {
+      publish(id, { state: "skipped", progress: 0 });
+      continue;
+    }
+
+    if (e.kind === "onnx-local" || e.kind === "onnx-remote") {
+      try {
+        const url = resolveModelUrl(e, be);
+        await fetchArrayBufferWithProgress(url, (p) => publish(id, p));
+        update(id, { state: "cached", progress: 1 });
+      } catch (err) {
+        publish(id, {
+          state: "error",
+          progress: 0,
+          error: String((err as Error)?.message ?? err),
+        });
+      }
+      continue;
+    }
+
+    // transformers.js models (Florence-2)
+    if (e.kind === "transformersjs" && id === "florence2") {
+      try {
+        publish(id, { state: "downloading", progress: 0 });
+        const { warmFlorence } = await import("../perception/florence2-engine");
+        await warmFlorence((fraction) =>
+          publish(id, { state: "downloading", progress: fraction })
+        );
+        update(id, { state: "ready", progress: 1 });
+      } catch (err) {
+        publish(id, {
+          state: "error",
+          progress: 0,
+          error: String((err as Error)?.message ?? err),
+        });
+      }
+      continue;
+    }
+
+    // webllm / mediapipe — initialized in later phases.
+    publish(id, { state: "skipped", progress: 0 });
+  }
 
   return ids.map((id) => get(id));
 }

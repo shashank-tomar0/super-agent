@@ -41,18 +41,32 @@ export async function ensureWebLLM(): Promise<boolean> {
       return false;
     }
 
-    engine = new (webllm as any).ChatCompletionPipeline();
+    // BUG-FIX: ChatCompletionPipeline was removed in WebLLM v0.2+.
+    // The correct factory is CreateMLCEngine (async, recommended) with
+    // MLCEngine (sync constructor + .reload()) as the fallback for older builds.
+    // Using the wrong constructor caused the offscreen document to crash
+    // ("engine.reload is not a function") when loading the last models,
+    // which also killed the service worker.
+    const createEngine: ((id: string, opts: unknown) => Promise<unknown>) | null =
+      (webllm as any).CreateMLCEngine ??
+      null;
+
+    if (!createEngine) {
+      console.warn("[VLESS] WebLLM: No compatible engine constructor found in @mlc-ai/web-llm");
+      return false;
+    }
 
     await Promise.race([
-      engine.reload(MODEL_ID, {
-        logLevel: "SILENT",
-        // @ts-ignore — progress callback
-        progressCallback: (step: number, total: number) => {
-          if (step % 50 === 0) {
-            console.log(`[VLESS] WebLLM loading: ${step}/${total}`);
-          }
-        },
-      }),
+      (async () => {
+        engine = await createEngine(MODEL_ID, {
+          logLevel: "SILENT",
+          initProgressCallback: (report: { progress: number; text: string }) => {
+            if (Math.round(report.progress * 100) % 10 === 0) {
+              console.log(`[VLESS] WebLLM loading: ${Math.round(report.progress * 100)}%`);
+            }
+          },
+        });
+      })(),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("WebLLM load timeout")), LOAD_TIMEOUT_MS)
       ),
@@ -147,13 +161,24 @@ Rules:
 Respond with ONLY valid JSON:
 {"reasoning":"<analysis>","steps":[{"action":{"type":"click|type|scroll|select|wait|press_key","target":"[<index>]","value":"<optional>"},"reasoning":"<why>","confidence":0.9,"risk":"low"}]}`;
 
-    const response = await engine.chat.completions.create({
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 2048,
-    });
-
-    const text = response.choices?.[0]?.message?.content || "";
+    // BUG-FIX: Support both the new OpenAI-compatible chat.completions API
+    // (WebLLM v0.2+) and the older generate() API as a fallback.
+    let text = "";
+    if (engine.chat?.completions?.create) {
+      const response = await engine.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 2048,
+      });
+      text = response.choices?.[0]?.message?.content || "";
+    } else if (typeof engine.generate === "function") {
+      text = await engine.generate(prompt, undefined, 1, {
+        temperature: 0.3,
+        max_gen_len: 2048,
+      });
+    } else {
+      throw new Error("WebLLM engine has no usable inference method");
+    }
     const parsed = parsePlanResponse(text);
 
     return {

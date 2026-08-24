@@ -86,6 +86,12 @@ export default defineContentScript({
         switch (message.type) {
           case "PERCEIVE_PAGE":
             try {
+              // BUG-FIX: Invalidate the element cache every time we re-scan.
+              // A re-scan means the page may have changed (SPA navigation, DOM
+              // mutations), so old element[N] indices are stale. Without this,
+              // the LLM targets [3] from the fresh scan and the executor still
+              // clicks whatever element[3] was from the previous scan.
+              invalidateElementCache();
               sendResponse(extractPageState());
             } catch (err: any) {
               sendResponse({ elements: [], forms: [], url: window.location.href, title: document.title, timestamp: Date.now(), textContent: "", metadata: { hasCAPTCHA: false, hasHoneypot: false, isSecure: true, hasFileUpload: false, hasPaymentForm: false, formCount: 0, totalElements: 0, interactiveElements: 0 }, confidence: 0, perceptionTime: 0 });
@@ -1101,7 +1107,19 @@ export default defineContentScript({
     // Cache of interactive elements for index-based lookup
     // The LLM returns targets like [0], [1], [2] which map to
     // the nth interactive element on the page.
+    // BUG-FIX: This cache must be invalidated after every PERCEIVE_PAGE call
+    // and on navigation events — otherwise the same [3] index that mapped to
+    // the YouTube search box before a navigate maps to a completely different
+    // element on the new page, causing phantom clicks.
     let interactiveElementCache: Element[] | null = null;
+
+    function invalidateElementCache(): void {
+      interactiveElementCache = null;
+    }
+
+    // Invalidate on soft navigation (SPA popstate + hashchange)
+    window.addEventListener("popstate", invalidateElementCache, { passive: true });
+    window.addEventListener("hashchange", invalidateElementCache, { passive: true });
 
     function getInteractiveElements(): Element[] {
       if (interactiveElementCache) return interactiveElementCache;
