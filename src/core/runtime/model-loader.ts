@@ -41,6 +41,21 @@ async function openCache(): Promise<Cache | null> {
   }
 }
 
+/**
+ * Check if there's enough storage quota before attempting a large download.
+ * Returns true if quota is available or quota API is unsupported.
+ */
+async function hasStorageQuota(neededBytes: number): Promise<boolean> {
+  try {
+    if (!navigator?.storage?.estimate) return true;
+    const { quota = 0, usage = 0 } = await navigator.storage.estimate();
+    const available = quota - usage;
+    return available > neededBytes * 1.1; // 10% headroom
+  } catch {
+    return true; // Can't check — try anyway
+  }
+}
+
 /** Is this URL already persisted on-device? (http(s) only; local files are always present.) */
 export async function isUrlCached(url: string): Promise<boolean> {
   if (!isHttpUrl(url)) return false; // extension-bundled: not a Cache API entry
@@ -107,7 +122,17 @@ export async function fetchArrayBufferWithProgress(
       off += c.byteLength;
     }
     if (cache) {
-      await cache.put(url, new Response(merged, { headers: { "content-length": String(loadedBytes) } }));
+      const canCache = await hasStorageQuota(loadedBytes);
+      if (canCache) {
+        try {
+          await cache.put(url, new Response(merged, { headers: { "content-length": String(loadedBytes) } }));
+        } catch (cacheErr) {
+          // Cache quota exceeded or internal error — model is still usable in-memory this session.
+          console.warn("[VLESS] cache.put failed (quota?), continuing without persistent cache:", cacheErr);
+        }
+      } else {
+        console.warn(`[VLESS] Skipping cache.put for ${url} — storage quota too low (${loadedBytes} bytes needed)`);
+      }
     }
     onProgress({ state: "cached", progress: 1, loadedBytes, totalBytes: loadedBytes });
     return merged.buffer;
@@ -115,7 +140,13 @@ export async function fetchArrayBufferWithProgress(
 
   // No streaming available — fall back to a single buffer read.
   const buf = await res.arrayBuffer();
-  if (cache) await cache.put(url, new Response(buf));
+  if (cache) {
+    try {
+      await cache.put(url, new Response(buf));
+    } catch (cacheErr) {
+      console.warn("[VLESS] cache.put failed (quota?), continuing without persistent cache:", cacheErr);
+    }
+  }
   onProgress({ state: "cached", progress: 1, loadedBytes: buf.byteLength, totalBytes: buf.byteLength });
   return buf;
 }
