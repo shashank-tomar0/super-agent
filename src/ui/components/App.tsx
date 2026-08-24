@@ -17,6 +17,7 @@ import { LearningLog } from "./LearningLog";
 import { PrivacyMonitor } from "./PrivacyMonitor";
 import { RuntimePanel } from "./RuntimePanel";
 import { ProviderSettings } from "./ProviderSettings";
+import { SessionHistoryPanel } from "./SessionHistoryPanel";
 import { Onboarding } from "./Onboarding";
 import { useKeyboardShortcuts, SHORTCUTS } from "../hooks/useKeyboardShortcuts";
 import type {
@@ -26,7 +27,7 @@ import type {
   MessageType,
 } from "../../types";
 
-type DrawerType = "none" | "ai" | "models" | "learn" | "privacy" | "voice" | "debug";
+type DrawerType = "none" | "ai" | "models" | "learn" | "privacy" | "voice" | "debug" | "history";
 
 export function App() {
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>("none");
@@ -332,6 +333,17 @@ export function App() {
             </svg>
           </button>
           <button
+            onClick={() => setActiveDrawer(activeDrawer === "history" ? "none" : "history")}
+            className={`p-1.5 rounded-none text-xs transition-all ${
+              activeDrawer === "history" ? "bg-[var(--color-accent)] text-[var(--color-paper)]" : "hallmark-button"
+            }`}
+            title="Local Session History"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          <button
             onClick={() => setShowShortcuts(!showShortcuts)}
             className="p-1.5 rounded-none hallmark-button transition-all"
             title="Shortcuts"
@@ -418,6 +430,7 @@ export function App() {
               {activeDrawer === "privacy" && "Privacy Ledger"}
               {activeDrawer === "learn" && "Learning Log"}
               {activeDrawer === "debug" && "Reasoning Trace"}
+              {activeDrawer === "history" && "Local Session History"}
             </span>
             <button
               onClick={() => setActiveDrawer("none")}
@@ -432,6 +445,14 @@ export function App() {
             {activeDrawer === "privacy" && <PrivacyMonitor />}
             {activeDrawer === "learn" && <LearningLog />}
             {activeDrawer === "debug" && <ReasoningTrace steps={reasoningTrace} task={task} />}
+            {activeDrawer === "history" && (
+              <SessionHistoryPanel
+                onSelectPrompt={(prompt) => {
+                  setActiveDrawer("none");
+                  startTask(prompt);
+                }}
+              />
+            )}
           </div>
         </div>
       )}
@@ -440,6 +461,9 @@ export function App() {
       <footer className="relative z-20 flex items-center justify-between px-4 py-2 bg-[var(--color-paper-2)] border-t-2 border-[var(--color-ink)] text-[10px] font-mono-press font-semibold uppercase">
         <span>{task ? `${task.status.toUpperCase()} • STEP ${task.currentStep}/${task.totalSteps}` : "VLESS READY"}</span>
         <div className="flex items-center gap-3">
+          <button onClick={() => setActiveDrawer("history")} className="hover:text-[var(--color-accent)] transition-colors">
+            History
+          </button>
           <button onClick={() => setActiveDrawer("learn")} className="hover:text-[var(--color-accent)] transition-colors">
             Log
           </button>

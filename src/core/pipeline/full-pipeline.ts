@@ -23,6 +23,7 @@ import {
   traceRedactionVerification, tracePlan, completeTrace, type ReasoningTrace,
 } from "../agent/reasoning-trace";
 import { generatePlanWithBestProvider, getBestAvailableProvider } from "../agent/llm-providers";
+import { saveSessionRecord } from "../privacy/session-history";
 import type { PlannedAction, PageState, Message } from "../../types";
 
 // ── Pipeline Types ───────────────────────────────────────────
@@ -799,7 +800,7 @@ export async function executeFullPipeline(
     // Complete the reasoning trace
     const completedTrace = completeTrace(true);
 
-    return {
+    const pipelineResult: PipelineResult = {
       success: planResult.success || planResult.steps.length > 0,
       phase: "complete",
       steps,
@@ -817,6 +818,35 @@ export async function executeFullPipeline(
       needs,
       outcome,
     };
+
+    // Save 100% on-device session record
+    const hostUrl = domData?.metadata?.url || "";
+    let domainName = "browser";
+    try { if (hostUrl) domainName = new URL(hostUrl).hostname; } catch {}
+
+    saveSessionRecord({
+      sessionId: `session-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: Date.now(),
+      taskPrompt: input.taskDescription,
+      targetUrl: hostUrl,
+      domain: domainName,
+      status: pipelineResult.success ? "completed" : "failed",
+      durationMs: totalLatency,
+      piiSummary: {
+        totalDetected: piiDetection.summary.criticalCount + piiDetection.summary.highCount + piiDetection.summary.mediumCount,
+        categories: piiDetection.summary.byCategory,
+        egressBlockedBytes: 0,
+      },
+      steps: planResult.steps.map((st, i) => ({
+        stepIndex: i + 1,
+        action: `${st.action?.type || "action"} ${st.action?.target || ""}`.trim(),
+        targetId: st.action?.target,
+        sanitizedValue: st.action?.value ? maskPIIInText(st.action.value) : undefined,
+        timestamp: Date.now(),
+      })),
+    }).catch(() => {});
+
+    return pipelineResult;
   } catch (error) {
 
     return buildErrorResult(
