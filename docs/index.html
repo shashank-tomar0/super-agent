@@ -2783,14 +2783,21 @@
       position: relative;
     }
 
-    .tide-burden .map-label>span {
-      display: none;
+    .tide-burden .map-label > .architecture-heading {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      color: #b6424b !important;
     }
 
-    .tide-burden .map-label h3 {
-      max-width: 520px;
-      font-size: clamp(48px, 4vw, 66px);
-      font-weight: 600;
+    .tide-burden .architecture-points {
+      display: grid !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+
+    .tide-burden .architecture-points li {
+      color: #0b1d63 !important;
     }
 
     .tide-burden .map-svg {
@@ -2991,13 +2998,31 @@
     }
 
     .tide-burden {
-      grid-template-columns: minmax(560px, 0.95fr) minmax(560px, 1fr);
-      gap: clamp(48px, 5vw, 88px);
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      gap: clamp(24px, 4vw, 56px);
+      width: 100%;
+      box-sizing: border-box;
     }
 
     .map-row.layer {
-      grid-template-columns: minmax(620px, 1.05fr) minmax(500px, 0.8fr);
-      gap: clamp(48px, 5vw, 88px);
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      gap: clamp(24px, 4vw, 56px);
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    .map-row.layer .architecture-points {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .map-row.layer .architecture-points li {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
 
     .architecture-heading,
@@ -3780,8 +3805,9 @@
     /* The install command sits on the paper like a small terminal receipt. */
     .hero-install-snippet {
       position: relative;
-      width: min(100%, 520px);
-      overflow: hidden;
+      width: min(100%, 580px);
+      overflow-x: auto;
+      overflow-y: hidden;
       text-align: left;
       color: #142b70;
       background: rgba(247, 241, 236, 0.92);
@@ -3793,13 +3819,15 @@
       display: block;
       padding: 15px 54px 16px 18px;
       color: #142b70;
-      font: 500 clamp(13px, 1vw, 15px)/1.75 var(--mono);
+      font: 500 clamp(11px, 0.92vw, 13.5px)/1.75 var(--mono);
       letter-spacing: -0.015em;
     }
 
     .hero-command-line {
       display: block;
-      white-space: nowrap;
+      white-space: normal;
+      word-break: break-all;
+      overflow-wrap: anywhere;
     }
 
     .hero-command-line::before {
