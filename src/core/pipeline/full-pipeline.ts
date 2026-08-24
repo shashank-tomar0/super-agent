@@ -1319,13 +1319,13 @@ function generateRuleBasedPlan(
     lower.match(/(?:search|find|look\s*up|search\s*for)\s+(.+?)\s+(?:on|in|at)\s+([\w.]+)/) ||
     lower.match(/(?:search|find|look\s*up|search\s*for)\s+(.+?)\s+(youtube|google|bing|amazon|flipkart|github)\b/);
 
-  // Also handle "open X youtube channel" / "find X on youtube channel"
-  const channelMatch =
-    !searchMatch &&
-    lower.match(/(.+?)\s+(?:youtube\s+channel|yt\s+channel|channel\s+on\s+youtube)/);
+  const channelMatch = searchMatch
+    ? null
+    : lower.match(/(.+?)\s+(?:youtube\s+channel|yt\s+channel|channel\s+on\s+youtube)/);
 
   if (searchMatch || channelMatch) {
-    const query = (searchMatch ? searchMatch[1] : channelMatch![1]).trim();
+    const matched = searchMatch || channelMatch!;
+    const query = matched[1].trim();
     const rawSite = searchMatch ? searchMatch[2].trim() : "youtube";
     const site = rawSite.replace(/[^a-z0-9]/g, "");
     const siteUrls: Record<string, string> = {
