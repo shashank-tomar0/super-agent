@@ -19,6 +19,7 @@ import { RuntimePanel } from "./RuntimePanel";
 import { ProviderSettings } from "./ProviderSettings";
 import { SessionHistoryPanel } from "./SessionHistoryPanel";
 import { Onboarding } from "./Onboarding";
+import { DrawerErrorBoundary } from "./DrawerErrorBoundary";
 import { useKeyboardShortcuts, SHORTCUTS } from "../hooks/useKeyboardShortcuts";
 import type {
   AgentTask,
@@ -440,19 +441,21 @@ export function App() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-            {activeDrawer === "ai" && <ProviderSettings />}
-            {activeDrawer === "models" && <RuntimePanel />}
-            {activeDrawer === "privacy" && <PrivacyMonitor />}
-            {activeDrawer === "learn" && <LearningLog />}
-            {activeDrawer === "debug" && <ReasoningTrace steps={reasoningTrace} task={task} />}
-            {activeDrawer === "history" && (
-              <SessionHistoryPanel
-                onSelectPrompt={(prompt) => {
-                  setActiveDrawer("none");
-                  startTask(prompt);
-                }}
-              />
-            )}
+            <DrawerErrorBoundary label={activeDrawer}>
+              {activeDrawer === "ai" && <ProviderSettings />}
+              {activeDrawer === "models" && <RuntimePanel />}
+              {activeDrawer === "privacy" && <PrivacyMonitor />}
+              {activeDrawer === "learn" && <LearningLog />}
+              {activeDrawer === "debug" && <ReasoningTrace steps={reasoningTrace} task={task} />}
+              {activeDrawer === "history" && (
+                <SessionHistoryPanel
+                  onSelectPrompt={(prompt) => {
+                    setActiveDrawer("none");
+                    startTask(prompt);
+                  }}
+                />
+              )}
+            </DrawerErrorBoundary>
           </div>
         </div>
       )}

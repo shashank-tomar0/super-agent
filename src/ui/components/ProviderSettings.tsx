@@ -2,12 +2,22 @@ import { useCallback, useEffect, useState } from "react";
 import type { ProviderConfig, ProviderID } from "../../core/agent/llm-providers";
 
 function send<T = unknown>(type: string, payload?: unknown): Promise<T> {
-  return chrome.runtime.sendMessage({
-    type,
-    payload,
-    source: "sidepanel",
-    timestamp: Date.now(),
-  }) as Promise<T>;
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage(
+        { type, payload, source: "sidepanel", timestamp: Date.now() },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message ?? "SW unavailable"));
+          } else {
+            resolve(response as T);
+          }
+        }
+      );
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 export function ProviderSettings() {
