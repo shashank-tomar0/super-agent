@@ -293,9 +293,10 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
   const tasksRun: string[] = [];
   let elements: DetectedElement[] = [];
 
-  // Graceful degradation: 300s timeout allows time for first-run HuggingFace download (333-544MB).
-  // Subsequent runs load from browser cache and complete in seconds.
-  const loaded = await ensureModelWithTimeout(300000);
+  // Graceful degradation: 5s timeout during pipeline run. If already downloaded/cached,
+  // ensureModel completes in <500ms. If not downloaded yet, fall back instantly
+  // to DOM+OCR perception so the task runs immediately without hanging the Service Worker.
+  const loaded = await ensureModelWithTimeout(5000);
   if (!loaded) {
     return {
       elements: [],

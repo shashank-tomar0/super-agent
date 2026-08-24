@@ -66,14 +66,11 @@ export async function checkOllamaAvailability(): Promise<{
       const models = modelsData.models || [];
       const modelNames = models.map((m: { name: string }) => m.name);
 
-      // Prefer qwen2.5:1.5b, then any qwen, then any model
-      if (modelNames.some((n: string) => n.includes("qwen2.5:1.5b"))) {
-        state.model = "qwen2.5:1.5b";
-      } else if (modelNames.some((n: string) => n.includes("qwen2.5:1.5b"))) {
-        state.model = "qwen2.5:1.5b";
-      } else if (modelNames.length > 0) {
-        state.model = modelNames[0];
-      }
+      // Flexible model matching
+      const wanted = DEFAULT_MODEL.toLowerCase();
+      let found = modelNames.find((n: string) => n.toLowerCase().includes("qwen") || n.toLowerCase().includes(wanted));
+      if (!found && modelNames.length > 0) found = modelNames[0];
+      if (found) state.model = found;
     }
 
     return {

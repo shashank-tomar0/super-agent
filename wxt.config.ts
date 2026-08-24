@@ -50,5 +50,8 @@ export default defineConfig({
   },
   vite: () => ({
     plugins: [react()],
+    build: {
+      modulePreload: false,
+    },
   }),
 });

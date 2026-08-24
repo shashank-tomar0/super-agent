@@ -645,9 +645,28 @@ export async function checkProviders(): Promise<ProviderStatus[]> {
         if (!resp.ok) throw new Error("Not running");
         const data = await resp.json();
         const models = (data.models || []).map((m: { name: string }) => m.name);
-        const model = models.find((n: string) =>
-          n.includes(config.model || "qwen")
-        );
+        const wanted = (config.model || "qwen").toLowerCase();
+
+        // 1. Exact or prefix match (e.g., "qwen2.5:1.5b" matches "qwen2.5:1.5b")
+        let model = models.find((n: string) => n.toLowerCase() === wanted || n.toLowerCase().startsWith(wanted));
+        // 2. Substring match
+        if (!model) {
+          model = models.find((n: string) => n.toLowerCase().includes(wanted));
+        }
+        // 3. Family match (e.g., "qwen", "llama", "mistral", "gemma", "phi")
+        if (!model) {
+          const family = wanted.split(":")[0].split("-")[0];
+          model = models.find((n: string) => n.toLowerCase().includes(family));
+        }
+        // 4. Any Qwen variant match
+        if (!model && wanted.includes("qwen")) {
+          model = models.find((n: string) => n.toLowerCase().includes("qwen"));
+        }
+        // 5. Fallback: if Ollama is running and has ANY model installed, use the first available model!
+        if (!model && models.length > 0) {
+          model = models[0];
+        }
+
         if (model) {
           statuses.push({
             id,
