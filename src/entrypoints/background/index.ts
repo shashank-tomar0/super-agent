@@ -64,6 +64,18 @@ export default defineBackground({
       console.log("🐾 LLM:", llmStatus.available ? `Connected (${llmStatus.model})` : "Unavailable");
     });
 
+    // ── Service Worker Keepalive Alarm (24s delay < 25s limit) ──
+    try {
+      chrome.alarms.create("vless_keepalive", { periodInMinutes: 0.4 });
+      chrome.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === "vless_keepalive") {
+          chrome.storage.session.get("keepalive_ping").catch(() => {});
+        }
+      });
+    } catch {
+      // Ignore alarm errors in unsupported environments
+    }
+
     // Open side panel when extension icon is clicked
     chrome.action.onClicked.addListener(async (tab) => {
       if (tab.id) {
