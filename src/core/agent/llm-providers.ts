@@ -367,34 +367,75 @@ Generate the action plan as JSON.`;
 
 // ── Response Parsing ────────────────────────────────────────
 
+/** Robustly extract and parse a JSON object from raw LLM text. */
+function extractJsonObject(str: string): any | null {
+  if (!str) return null;
+
+  // 1. Try markdown code block
+  const fenceMatch = str.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1]); } catch {}
+  }
+
+  // 2. Track balanced curly braces to isolate exact JSON payload
+  const startIdx = str.indexOf("{");
+  if (startIdx !== -1) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = startIdx; i < str.length; i++) {
+      const char = str[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === "{") depth++;
+        else if (char === "}") {
+          depth--;
+          if (depth === 0) {
+            const candidate = str.substring(startIdx, i + 1);
+            try { return JSON.parse(candidate); } catch {}
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Fallback to direct parse
+  try { return JSON.parse(str.trim()); } catch {}
+  return null;
+}
+
 function parsePlanResponse(response: string): {
   steps: PlannedAction[];
   reasoning: string;
 } {
-  // Strip markdown code fences if present
-  const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return { steps: [], reasoning: "No JSON found in response" };
+  const parsed = extractJsonObject(response);
+  if (!parsed) {
+    console.warn("[VLESS] Could not parse JSON from LLM response:", response.slice(0, 300));
+    return { steps: [], reasoning: "Failed to parse JSON from LLM response" };
   }
 
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    // Handle both "steps" and "actions" keys
     const rawSteps = parsed.steps || parsed.actions || [];
     const steps: PlannedAction[] = rawSteps.map(
       (step: Record<string, unknown>, i: number) => {
-        // Handle nested action object or flat step
         const action = (step.action || step) as Record<string, unknown>;
-        // Normalize target: extract index from "[0]" format
         let target = (action.target || action.element || "") as string;
-        // Normalize: extract bracket index from strings like "[0] Given Name"
         const bracketMatch = target.match(/\[(\d+)\]/);
         if (bracketMatch) {
           target = "[" + bracketMatch[1] + "]";
         }
-        // Normalize action type
         let actionType = (action.type || "wait") as string;
         if (actionType === "fill") actionType = "type";
         if (actionType === "input") actionType = "type";
@@ -421,7 +462,7 @@ function parsePlanResponse(response: string): {
       reasoning: parsed.reasoning || `Generated ${steps.length} steps`,
     };
   } catch {
-    return { steps: [], reasoning: "Failed to parse LLM response" };
+    return { steps: [], reasoning: "Failed to process LLM action steps" };
   }
 }
 
@@ -706,7 +747,23 @@ export async function generatePlanWithBestProvider(
   const configs = await loadProviderConfigs();
   const statuses = await checkProviders();
 
-  const priority = planningPriority(configs, statuses);
+  // Read explicitly chosen active provider from local storage
+  let activeId: ProviderID = "ollama";
+  try {
+    const stored = await chrome.storage.local.get("vless_active_provider");
+    if (stored.vless_active_provider && configs[stored.vless_active_provider as ProviderID]) {
+      activeId = stored.vless_active_provider as ProviderID;
+    }
+  } catch {
+    // fallback
+  }
+
+  const defaultPriority = planningPriority(configs, statuses);
+  // Put active provider at the front of priority list
+  const priority: ProviderID[] = [
+    activeId,
+    ...defaultPriority.filter((id) => id !== activeId),
+  ];
 
   for (const id of priority) {
     const status = statuses.find((s) => s.id === id);
