@@ -1,0 +1,1318 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="VLESS — Privacy-preserving browser automation through on-device visual perception." />
+  <meta name="theme-color" content="#1537ad" />
+  <title>VLESS — Private Visual Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Instrument+Serif:ital@0;1&amp;family=Syne:wght@400;500;600;700;800&amp;display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --blue: #1537ad;
+      --deep: #0b1d63;
+      --paper: #f3ebe5;
+      --ink: #15162b;
+      --pink: #e2a0b8;
+      --coral: #e23829;
+      --gold: #d9b34e;
+      --green: #176a5e;
+      --lilac: #a9abd8;
+      --sky: #94bfda;
+      --sans: "DM Sans", sans-serif;
+      --display: "Syne", sans-serif;
+      --mono: "IBM Plex Mono", monospace;
+      --edge: clamp(20px, 5vw, 84px);
+      --max: 1580px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--blue);
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body:after {
+      content: "";
+      position: fixed;
+      z-index: 99;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.07;
+      mix-blend-mode: multiply;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.7' numOctaves='5' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    svg,
+    img {
+      display: block;
+    }
+
+    .page {
+      width: min(100%, var(--max));
+      margin: auto;
+      overflow: hidden;
+    }
+
+    .kicker {
+      font: 500 10px/1.4 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 10px;
+      border-radius: 50%;
+      background: var(--coral);
+      box-shadow: 12px 0 0 var(--gold);
+    }
+
+    .mark {
+      width: 48px;
+      height: 27px;
+    }
+
+    .brand-logo-text {
+      font: 800 24px/1 var(--display);
+      letter-spacing: 0.06em;
+      color: #f8ede7;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo-text span.badge {
+      font: 700 9px var(--mono);
+      background: var(--coral);
+      color: #fff;
+      padding: 2px 6px;
+      letter-spacing: 0.1em;
+    }
+
+    .mark path {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.8;
+      stroke-linecap: round;
+    }
+
+    .mark .a {
+      fill: var(--gold);
+    }
+
+    .mark .b {
+      fill: var(--coral);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font: 500 15px var(--display);
+      letter-spacing: 0.03em;
+    }
+
+    .nav {
+      position: absolute;
+      z-index: 10;
+      top: 0;
+      left: 50%;
+      width: min(100%, var(--max));
+      height: 64px;
+      transform: translateX(-50%);
+      padding: 0 var(--edge);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #f8ede7;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font: 500 12px var(--mono);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: all 0.2s ease;
+    }
+
+    .nav-cta:hover {
+      background: #fff;
+      color: var(--blue);
+      border-color: #fff;
+    }
+
+    .nav-cta.accent {
+      background: var(--coral);
+      border-color: var(--coral);
+      color: #fff;
+    }
+
+    .nav-cta.accent:hover {
+      background: #fff;
+      color: var(--coral);
+    }
+
+    .tide-scroll {
+      position: relative;
+      height: min(280svh, 2400px);
+    }
+
+    .tide-scroll .hero.hero-proto {
+      position: sticky;
+      top: 0;
+      height: 100svh;
+      min-height: 720px;
+    }
+
+    .hero-proto {
+      --tide-cover: 0px;
+      --tide-inner-shift: 0px;
+      --halo-opacity: 1;
+      --copy-shift: 0px;
+      --copy-opacity: 1;
+      --burden-y: 104%;
+      --burden-opacity: 0;
+      --wave-content-gap: 60px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #f8ede7;
+      background: var(--blue);
+      text-align: center;
+    }
+
+    .tide-underfill {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      background: var(--paper);
+      clip-path: polygon(0 100%, 100% 100%, 100% calc(100% - var(--tide-cover)), 0 calc(100% - var(--tide-cover)));
+    }
+
+    .memory-rail {
+      position: absolute;
+      z-index: 3;
+      top: 50%;
+      transform: translateY(-50%);
+      color: rgba(255, 255, 255, 0.35);
+      font: 400 9px var(--mono);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      writing-mode: vertical-rl;
+      opacity: var(--halo-opacity);
+    }
+
+    .memory-rail.left {
+      left: calc(var(--edge) * 0.6);
+      transform: translateY(-50%) rotate(180deg);
+    }
+
+    .memory-rail.right {
+      right: calc(var(--edge) * 0.6);
+    }
+
+    .hero-proto-center {
+      position: relative;
+      z-index: 2;
+      max-width: 900px;
+      padding: 0 var(--edge);
+      transform: translateY(var(--copy-shift));
+      opacity: var(--copy-opacity);
+    }
+
+    .hero-product {
+      margin: 16px 0 12px;
+      font: 700 13px var(--mono);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--pink);
+    }
+
+    .hero-headline {
+      margin: 0 0 20px;
+      font: 500 clamp(42px, 5.5vw, 84px)/0.96 var(--display);
+      letter-spacing: -0.04em;
+    }
+
+    .hero-proto-center p {
+      max-width: 640px;
+      margin: 0 auto 32px;
+      color: rgba(248, 237, 231, 0.78);
+      font-size: clamp(15px, 1.4vw, 19px);
+      line-height: 1.6;
+    }
+
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .hero-install-snippet {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      font: 400 13px var(--mono);
+      color: #f8ede7;
+    }
+
+    .hero-command-line {
+      display: inline-block;
+    }
+
+    .hero-copy-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      transition: color 0.2s;
+    }
+
+    .hero-copy-btn:hover {
+      color: #fff;
+    }
+
+    .hero-copy-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .memory-terrain {
+      position: absolute;
+      z-index: 2;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: auto;
+      min-height: 240px;
+      transform: translateY(var(--tide-inner-shift));
+      pointer-events: none;
+    }
+
+    .memory-terrain .mass {
+      fill: var(--paper);
+    }
+
+    .memory-terrain .mass.mid {
+      fill: #e8ded7;
+    }
+
+    .memory-terrain .mass.cobalt {
+      fill: var(--deep);
+      opacity: 0.15;
+    }
+
+    .memory-terrain .pink-thread {
+      fill: none;
+      stroke: var(--coral);
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      opacity: 0.85;
+    }
+
+    .memory-terrain .topoline {
+      fill: none;
+      stroke: rgba(21, 22, 43, 0.18);
+      stroke-width: 1;
+    }
+
+    .memory-terrain .topoline.rose {
+      stroke: var(--coral);
+      opacity: 0.4;
+    }
+
+    .memory-terrain .event {
+      fill: var(--ink);
+    }
+
+    .memory-terrain .event.hot {
+      fill: var(--coral);
+    }
+
+    .memory-terrain .event.recalled {
+      fill: var(--gold);
+    }
+
+    .memory-terrain text {
+      fill: rgba(21, 22, 43, 0.5);
+      font: 500 9px var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .terrain-label {
+      position: absolute;
+      z-index: 3;
+      bottom: 24px;
+      color: rgba(21, 22, 43, 0.46);
+      font: 400 8px var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .terrain-label.left {
+      left: var(--edge);
+    }
+
+    .terrain-label.right {
+      right: var(--edge);
+    }
+
+    .maps {
+      padding: clamp(90px, 10vw, 150px) var(--edge);
+      background: var(--paper);
+    }
+
+    .map-row {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 55px;
+      align-items: center;
+      padding: 65px 0;
+      border-top: 1px solid rgba(21, 22, 43, 0.18);
+    }
+
+    .map-row:last-child {
+      border-bottom: 1px solid rgba(21, 22, 43, 0.18);
+    }
+
+    .map-label span {
+      color: #8b8790;
+      font: 400 9px var(--mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .map-label h3 {
+      margin: 14px 0 12px;
+      font: 700 32px/1.12 var(--display);
+      letter-spacing: -0.035em;
+    }
+
+    .map-label p {
+      margin: 0;
+      color: #77727c;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .architecture-heading {
+      display: block !important;
+      position: relative;
+      z-index: 4;
+      width: max-content;
+      margin: 0 0 28px;
+      font: italic 400 clamp(48px, 4vw, 64px) / 0.95 "Instrument Serif", serif !important;
+      letter-spacing: -0.015em;
+      text-transform: none;
+    }
+
+    .architecture-arrow {
+      display: block !important;
+      position: absolute;
+      z-index: 5;
+      top: 5px;
+      width: clamp(240px, 20vw, 360px);
+      height: 64px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .without-heading .architecture-arrow {
+      left: calc(100% + 2px);
+      transform: rotate(-2deg);
+    }
+
+    .with-heading .architecture-arrow {
+      right: calc(100% - 2px);
+      transform: rotate(2deg);
+    }
+
+    .without-heading {
+      color: #b6424b;
+    }
+
+    .with-heading {
+      color: #176a5e;
+    }
+
+    .architecture-points {
+      width: 100%;
+      max-width: 560px;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 14px;
+      list-style: none;
+      color: #15255e;
+      font-family: var(--sans);
+    }
+
+    .architecture-points li {
+      position: relative;
+      padding: 14px 28px 15px 22px;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .architecture-points strong {
+      font: 600 clamp(17px, 1.4vw, 22px)/1.18 var(--sans);
+      letter-spacing: -0.02em;
+    }
+
+    .architecture-points small {
+      margin-top: 4px;
+      color: rgba(21, 37, 94, 0.78);
+      font: 500 12px/1.4 var(--sans);
+      display: block;
+    }
+
+    .architecture-points li:nth-child(1) {
+      background: #f8c0b8;
+    }
+
+    .architecture-points li:nth-child(2) {
+      background: #f3d4a0;
+    }
+
+    .architecture-points li:nth-child(3) {
+      background: #e1a3b8;
+    }
+
+    .map-row.layer .architecture-points li:nth-child(1) {
+      background: #79d5a2;
+    }
+
+    .map-row.layer .architecture-points li:nth-child(2) {
+      background: #a9bee8;
+    }
+
+    .map-row.layer .architecture-points li:nth-child(3) {
+      background: #e8d089;
+    }
+
+    .map-svg {
+      width: 100%;
+      height: auto;
+      max-height: 480px;
+    }
+
+    .map-svg .thread {
+      fill: none;
+      stroke-width: 2.3;
+      stroke-linecap: round;
+    }
+
+    .map-svg .echo {
+      fill: none;
+      stroke-width: 1;
+      stroke-dasharray: 3 8;
+      opacity: 0.55;
+    }
+
+    .map-svg .person {
+      fill: var(--blue);
+      stroke: var(--paper);
+      stroke-width: 2;
+    }
+
+    .map-svg .memory {
+      fill: var(--blue);
+      stroke: var(--ink);
+      stroke-width: 2;
+    }
+
+    .map-svg .tool {
+      fill: var(--paper);
+      stroke: var(--ink);
+      stroke-width: 1.5;
+    }
+
+    .map-svg text {
+      fill: var(--ink);
+      font: 500 10px var(--mono);
+      text-anchor: middle;
+      letter-spacing: 0.05em;
+    }
+
+    .map-svg .coretext {
+      font: 600 16px var(--display);
+      letter-spacing: -0.02em;
+    }
+
+    .master-line {
+      margin: 60px auto 20px;
+      width: min(900px, 100%);
+      font: 600 clamp(32px, 4vw, 58px)/1.05 var(--display);
+      letter-spacing: -0.04em;
+      text-align: center;
+    }
+
+    .master-line em {
+      color: var(--coral);
+      font-style: normal;
+    }
+
+    .master-sub {
+      margin: 0 auto 70px;
+      text-align: center;
+      color: #79747c;
+      font-size: 15px;
+    }
+
+    .principles {
+      position: relative;
+      padding: clamp(90px, 9vw, 140px) var(--edge);
+      background: #090a0e;
+      color: #f5f1ef;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 48px 36px;
+    }
+
+    .principles-head {
+      grid-column: 1 / -1;
+      margin-bottom: 20px;
+    }
+
+    .principles-head h2 {
+      margin: 0;
+      font: 500 clamp(36px, 4.5vw, 64px)/1 var(--display);
+      letter-spacing: -0.04em;
+      color: #fff;
+    }
+
+    .principle {
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      padding-top: 24px;
+    }
+
+    .principle span {
+      color: var(--coral);
+      font: 500 11px var(--mono);
+      letter-spacing: 0.14em;
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .principle h3 {
+      margin: 0 0 12px;
+      font: 600 22px var(--display);
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+
+    .principle p {
+      margin: 0;
+      color: #a09fa9;
+      font-size: 14px;
+      line-height: 1.68;
+    }
+
+    .benchmark-section {
+      padding: clamp(90px, 9vw, 140px) var(--edge);
+      background: #ece1db;
+    }
+
+    .benchmark-shell {
+      width: min(100%, 1240px);
+      margin: auto;
+    }
+
+    .benchmark-intro {
+      margin-bottom: 50px;
+    }
+
+    .benchmark-intro h2 {
+      margin: 14px 0 0;
+      font: 600 clamp(36px, 4.2vw, 62px)/1 var(--display);
+      letter-spacing: -0.04em;
+    }
+
+    .benchmark-intro p {
+      max-width: 580px;
+      margin: 16px 0 0;
+      color: #686674;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .benchmark-results {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 50px;
+      align-items: center;
+      background: #090a0e;
+      color: #fff;
+      padding: 42px;
+      border-radius: 16px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    .benchmark-orbits {
+      display: grid;
+      gap: 20px;
+    }
+
+    .benchmark-orbit {
+      background: #14151c;
+      padding: 22px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: center;
+    }
+
+    .benchmark-orbit strong {
+      display: block;
+      font: 700 42px/1 var(--display);
+      color: var(--coral);
+      margin-bottom: 6px;
+    }
+
+    .benchmark-orbit.recall-orbit strong {
+      color: #79d5a2;
+    }
+
+    .benchmark-orbit span {
+      font: 500 11px var(--mono);
+      color: #a09fa9;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .horizontal-chart {
+      display: grid;
+      gap: 16px;
+    }
+
+    .horizontal-bar {
+      display: grid;
+      grid-template-columns: 200px 1fr 50px;
+      align-items: center;
+      gap: 16px;
+      font: 500 12px var(--mono);
+    }
+
+    .horizontal-bar strong {
+      color: #d0ceda;
+      font-weight: 500;
+    }
+
+    .horizontal-track {
+      background: #1e1f29;
+      height: 12px;
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .horizontal-track span {
+      display: block;
+      height: 100%;
+      width: var(--score);
+      background: linear-gradient(90deg, #176a5e, #79d5a2);
+      border-radius: 6px;
+    }
+
+    .horizontal-bar output {
+      text-align: right;
+      color: #79d5a2;
+      font-weight: 700;
+    }
+
+    .install {
+      padding: clamp(90px, 9vw, 140px) var(--edge);
+      background: var(--paper);
+    }
+
+    .install-grid {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 60px;
+      align-items: start;
+    }
+
+    .install-copy h2 {
+      margin: 0 0 16px;
+      font: 600 clamp(36px, 4.5vw, 62px)/1 var(--display);
+      letter-spacing: -0.04em;
+    }
+
+    .install-copy p {
+      color: #686674;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .codebox {
+      background: #090a0e;
+      color: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+    }
+
+    .code-tabs {
+      display: flex;
+      align-items: center;
+      background: #14151c;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 0 8px;
+    }
+
+    .code-tab {
+      background: none;
+      border: none;
+      color: #8b8790;
+      padding: 12px 18px;
+      font: 500 11px var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .code-tab.active {
+      color: #fff;
+      border-bottom-color: var(--coral);
+    }
+
+    .code-tabs .copy {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #8b8790;
+      cursor: pointer;
+      padding: 8px;
+    }
+
+    .code-tabs .copy:hover {
+      color: #fff;
+    }
+
+    .code-tabs .copy svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    .code-content {
+      padding: 24px;
+      overflow-x: auto;
+    }
+
+    .code-content pre {
+      margin: 0;
+      font: 400 13px/1.7 var(--mono);
+      color: #79d5a2;
+      white-space: pre-wrap;
+    }
+
+    .footer {
+      padding: 40px var(--edge);
+      background: var(--blue);
+      color: #f8ede7;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      font: 500 12px var(--mono);
+      text-transform: uppercase;
+    }
+
+    .footer-links a:hover {
+      color: var(--pink);
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .reveal.in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 900px) {
+      .principles {
+        grid-template-columns: 1fr;
+      }
+
+      .map-row,
+      .benchmark-results,
+      .install-grid {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="nav">
+    <a class="brand" href="#top">
+      <div class="brand-logo-text">
+        VLESS <span class="badge">0 KB EGRESS</span>
+      </div>
+    </a>
+    <div class="nav-links">
+      <a class="nav-cta" href="https://github.com/shashank-tomar0/super-agent" target="_blank" rel="noopener">
+        <span>GitHub</span><b>↗</b>
+      </a>
+      <a class="nav-cta accent" href="vless-0.1.0-chrome.zip" download="vless-0.1.0-chrome.zip">
+        <span>Download ZIP</span><b>📦</b>
+      </a>
+    </div>
+  </nav>
+
+  <div class="page">
+    <span id="top" aria-hidden="true"></span>
+    <div class="tide-scroll">
+      <header class="hero hero-proto">
+        <div class="tide-underfill" aria-hidden="true"></div>
+        <div class="memory-rail left"><span>00 / PERCEIVE ON-DEVICE</span></div>
+        <div class="memory-rail right">
+          <span>LOCAL · DETERMINISTIC · ZERO EGRESS</span>
+        </div>
+        <div class="hero-proto-center">
+          <div class="hero-product">VLESS — PRIVATE VISUAL AGENT</div>
+          <h1 class="hero-headline">
+            Automate your browser.<br />Expose zero data.
+          </h1>
+          <p>
+            VLESS runs Florence-2 ViT, PP-OCR, and PII detection 100% inside your browser. Automated form filling and web tasks with provable, DevTools-verifiable privacy.
+          </p>
+          <div class="hero-actions">
+            <a class="nav-cta accent" href="vless-0.1.0-chrome.zip" download="vless-0.1.0-chrome.zip" style="padding: 12px 24px; font-size: 13px;">
+              <span>Download Extension (.ZIP)</span> 📦
+            </a>
+            <a class="nav-cta" href="https://github.com/shashank-tomar0/super-agent" target="_blank" rel="noopener" style="padding: 12px 24px; font-size: 13px;">
+              <span>View GitHub Source</span> ↗
+            </a>
+          </div>
+        </div>
+
+        <svg class="memory-terrain" viewBox="0 0 1500 430" preserveAspectRatio="none" aria-hidden="true">
+          <path class="mass mid"
+            d="M0 430V244C91 219 173 258 257 247S405 174 507 191S636 251 744 232S922 127 1044 157S1190 235 1288 207S1412 158 1500 180V430Z" />
+          <path class="mass cobalt"
+            d="M580 430V310C683 263 762 291 851 264S1000 190 1102 207S1240 280 1337 248S1441 212 1500 224V430Z" />
+          <path class="mass"
+            d="M0 430V326C97 279 182 330 275 304S421 221 527 239S667 315 784 280S946 209 1065 235S1219 315 1320 279S1430 235 1500 252V430Z" />
+          <g>
+            <path class="pink-thread"
+              d="M-20 258C96 224 181 260 266 249S409 176 514 194S645 253 749 235S922 130 1049 161S1195 238 1295 209S1416 161 1520 182" />
+            <path class="pink-thread"
+              d="M-20 276C100 242 186 278 272 267S413 195 520 213S650 271 754 253S927 149 1055 180S1200 256 1301 227S1422 180 1520 200" />
+            <path class="pink-thread"
+              d="M-20 294C104 260 191 296 278 285S417 215 526 232S655 289 759 271S932 169 1061 199S1205 274 1307 245S1428 199 1520 218" />
+          </g>
+          <g>
+            <path class="topoline"
+              d="M-10 312C88 268 176 318 268 291S416 205 521 226S665 298 779 263S940 191 1061 219S1218 300 1315 264S1427 218 1510 238" />
+            <path class="topoline"
+              d="M-10 329C92 286 181 334 274 308S419 225 526 244S667 316 783 281S946 211 1067 238S1221 318 1320 282S1434 238 1510 256" />
+            <path class="topoline rose"
+              d="M-10 347C95 304 185 352 279 326S423 245 532 263S672 335 788 299S950 230 1073 257S1225 337 1326 301S1440 257 1510 274" />
+          </g>
+          <g>
+            <circle class="event" cx="91" cy="291" r="2.2" />
+            <circle class="event hot" cx="205" cy="301" r="5" />
+            <circle class="event recalled" cx="329" cy="251" r="5" />
+            <circle class="event hot" cx="520" cy="224" r="5" />
+            <circle class="event recalled" cx="748" cy="263" r="5" />
+            <circle class="event hot" cx="1002" cy="179" r="5" />
+            <circle class="event recalled" cx="1183" cy="265" r="5" />
+          </g>
+          <text x="189" y="281">DOM extraction</text>
+          <text x="962" y="164">Florence-2 ViT</text>
+          <text x="1203" y="289">Egress Guard · 0 KB</text>
+        </svg>
+        <span class="terrain-label left">on-device visual perception</span>
+        <span class="terrain-label right">redacted · re-OCR verified · clean</span>
+      </header>
+    </div>
+
+    <section class="maps" id="architecture">
+      <div class="map-row burden reveal">
+        <div class="map-label">
+          <span class="architecture-heading without-heading">
+            without VLESS
+            <svg class="architecture-arrow" viewBox="0 0 220 75" aria-hidden="true">
+              <path d="M4 38C43 10 77 59 118 30S178 13 210 40" />
+              <path d="M193 37L211 40L203 23" />
+            </svg>
+          </span>
+          <ul class="architecture-points">
+            <li>Cloud agents send raw screenshots to remote APIs.</li>
+            <li>Passwords, Aadhaar, PAN, & faces leave your machine.</li>
+            <li><span class="alert-you" style="color:#b6424b; font-weight:700">YOU</span> risk massive privacy leaks on every web task.</li>
+          </ul>
+        </div>
+        <svg class="map-svg" viewBox="0 0 940 430" role="img" aria-label="Cloud agents exposing sensitive screenshots to remote servers">
+          <defs>
+            <filter id="wobble">
+              <feTurbulence baseFrequency=".015" numOctaves="2" seed="4" result="n" />
+              <feDisplacementMap in="SourceGraphic" in2="n" scale="3" />
+            </filter>
+          </defs>
+          <path class="thread" stroke="#e23829" d="M470 113C366 167 248 228 228 339" />
+          <path class="thread" stroke="#f36b57" d="M475 115C418 192 380 258 363 330" />
+          <path class="thread" stroke="#e23829" d="M482 114C465 204 484 269 478 366" />
+          <ellipse class="person" cx="484" cy="84" rx="112" ry="49" style="fill:#b6424b;" />
+          <text class="coretext" x="484" y="91" fill="#fff">RAW SCREENSHOTS</text>
+          <g>
+            <circle class="tool" cx="226" cy="344" r="24" />
+            <text x="226" y="385">BROWSER USE</text>
+            <circle class="tool" cx="362" cy="335" r="24" />
+            <text x="362" y="376">COMPUTER USE</text>
+            <circle class="tool" cx="479" cy="372" r="24" />
+            <text x="479" y="413">OPENAI OPERATOR</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="master-line">
+        Automation was meant to assist — <em>not to expose you.</em>
+      </div>
+
+      <div class="map-row layer reveal">
+        <div class="map-label">
+          <span class="architecture-heading with-heading">
+            with VLESS
+            <svg class="architecture-arrow" viewBox="0 0 220 75" aria-hidden="true">
+              <path d="M216 38C177 10 143 59 102 30S42 13 10 40" />
+              <path d="M27 37L9 40L17 23" />
+            </svg>
+          </span>
+          <ul class="architecture-points">
+            <li>Florence-2 ViT & PP-OCR run <span class="memory-emphasis" style="font-weight:700">100% on-device</span>.</li>
+            <li><span class="memory-emphasis" style="font-weight:700">Egress Guard</span> blocks PII before it reaches network.</li>
+            <li>Only sanitized structural metadata is sent to LLM planners.</li>
+          </ul>
+        </div>
+        <svg class="map-svg" viewBox="0 0 940 430" role="img" aria-label="VLESS on-device perception shielding PII">
+          <path class="thread" stroke="#1537ad" d="M126 221C197 221 244 186 314 160" />
+          <path class="thread" stroke="#79d5a2" d="M127 231C211 245 238 274 312 283" />
+          <circle class="person" cx="91" cy="222" r="43" style="fill:#176a5e;" />
+          <text class="coretext" x="91" y="229" fill="#fff">YOU</text>
+          <ellipse class="memory" cx="418" cy="200" rx="103" ry="64" style="fill:#1537ad;" />
+          <text x="418" y="193" fill="#fff" style="fill: #fff; font-size: 18px; font-family: var(--display); font-weight:700;">
+            VLESS
+          </text>
+          <text x="418" y="217" fill="#fff" style="fill: #79d5a2; font-size: 9px; font-family: var(--mono); letter-spacing:0.1em;">
+            0 KB EGRESS · LOCAL ViT
+          </text>
+          <circle class="tool" cx="748" cy="82" r="23" />
+          <text x="748" y="45">OLLAMA</text>
+          <circle class="tool" cx="833" cy="183" r="23" />
+          <text x="833" y="226">CLAUDE</text>
+          <circle class="tool" cx="764" cy="297" r="23" />
+          <text x="764" y="340">OPENAI</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="principles" id="principles">
+      <div class="principles-head reveal">
+        <h2>Perception you can audit.<br />Privacy you can prove.</h2>
+      </div>
+      <article class="principle reveal">
+        <span>01</span>
+        <h3>Tri-Signal Perception</h3>
+        <p>DOM extraction (10ms), PP-OCR (200ms), and Florence-2 ViT (1-3s) fused into a unified ScreenGraph. Handles canvas text, PDFs, and complex web UIs.</p>
+      </article>
+      <article class="principle reveal">
+        <span>02</span>
+        <h3>Checksum-Gated PII</h3>
+        <p>Aadhaar Verhoeff validation, Luhn algorithm for cards, and PAN format series checking. Mathematical validation eliminates false positives.</p>
+      </article>
+      <article class="principle reveal">
+        <span>03</span>
+        <h3>Re-OCR Verification</h3>
+        <p>Redacted screenshot frames are re-scanned with local OCR to assert zero residual PII in pixels before anything is sent to any planner.</p>
+      </article>
+      <article class="principle reveal">
+        <span>04</span>
+        <h3>Navigation-Safe Engine</h3>
+        <p>Detects tab navigation and waits for <code>tabs.onUpdated</code> complete status before executing subsequent actions — zero messaging crashes.</p>
+      </article>
+      <article class="principle reveal">
+        <span>05</span>
+        <h3>Egress Guard & Tripwire</h3>
+        <p>Egress Guard blocks VLESS outbound calls containing PII. MAIN-world tripwire monitors page traffic for complete DevTools auditability.</p>
+      </article>
+      <article class="principle reveal">
+        <span>06</span>
+        <h3>Deterministic & Multi-LLM</h3>
+        <p>Sub-100ms offline form filling for 30+ Indian field patterns. Multi-provider fallback for Ollama, Claude, OpenAI, and OpenRouter.</p>
+      </article>
+    </section>
+
+    <section class="benchmark-section" id="benchmark">
+      <div class="benchmark-shell">
+        <div class="benchmark-intro reveal">
+          <div class="kicker"><i class="dot"></i>03 / REPRODUCIBLE EVALUATION</div>
+          <h2>What the privacy benchmark says.</h2>
+          <p>
+            Evaluated across standard Indian web forms, sensitive government portals, and canvas web applications. Verified using Chrome DevTools network traffic audits.
+          </p>
+        </div>
+        <div class="benchmark-results reveal">
+          <div class="benchmark-orbits">
+            <div class="benchmark-orbit">
+              <strong>0.00 KB</strong>
+              <span>Outbound PII Egress</span>
+            </div>
+            <div class="benchmark-orbit recall-orbit">
+              <strong>100%</strong>
+              <span>On-Device Perception</span>
+            </div>
+          </div>
+          <div class="horizontal-chart">
+            <div class="horizontal-bar" style="--score: 100%">
+              <div class="horizontal-track"><span></span></div>
+              <strong>Aadhaar (Verhoeff)</strong>
+              <output>1.00</output>
+            </div>
+            <div class="horizontal-bar" style="--score: 100%">
+              <div class="horizontal-track"><span></span></div>
+              <strong>Cards (Luhn)</strong>
+              <output>1.00</output>
+            </div>
+            <div class="horizontal-bar" style="--score: 99.5%">
+              <div class="horizontal-track"><span></span></div>
+              <strong>PAN Series Check</strong>
+              <output>0.99</output>
+            </div>
+            <div class="horizontal-bar" style="--score: 95%">
+              <div class="horizontal-track"><span></span></div>
+              <strong>Face Detection (FaceDetector)</strong>
+              <output>0.95</output>
+            </div>
+            <div class="horizontal-bar" style="--score: 100%">
+              <div class="horizontal-track"><span></span></div>
+              <strong>Re-OCR Pixel Zero-Leak</strong>
+              <output>1.00</output>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="install" id="install">
+      <div class="install-grid">
+        <div class="install-copy">
+          <h2>Privacy, protected.</h2>
+          <p>Download the pre-built Extension ZIP or build from source in seconds.</p>
+          <div style="margin-top:24px;">
+            <a class="nav-cta accent" href="vless-0.1.0-chrome.zip" download="vless-0.1.0-chrome.zip" style="padding: 12px 22px; font-size: 13px;">
+              <span>Download Chrome Extension ZIP</span> 📦
+            </a>
+          </div>
+        </div>
+        <div>
+          <div class="codebox">
+            <div class="code-tabs">
+              <button class="code-tab active" data-code="install">Build Source</button>
+              <button class="code-tab" data-code="chrome">Chrome Setup</button>
+              <button class="code-tab" data-code="ollama">Ollama</button>
+              <button class="code-tab" data-code="zip">ZIP Link</button>
+              <button class="copy" aria-label="Copy command" title="Copy command">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="8" y="8" width="11" height="11" rx="1" />
+                  <path d="M16 8V5H5v11h3" />
+                </svg>
+              </button>
+            </div>
+            <div class="code-content">
+              <pre id="command">git clone https://github.com/shashank-tomar0/super-agent.git
+cd super-agent
+npm install && npm run build</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="brand">
+        VLESS — Smart India Hackathon 2026 (PS 26171)
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/shashank-tomar0/super-agent" target="_blank" rel="noopener">GitHub</a>
+        <a href="vless-0.1.0-chrome.zip" download="vless-0.1.0-chrome.zip">Download ZIP</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+      const hero = document.querySelector(".hero-proto");
+      const tideStage = document.querySelector(".tide-scroll");
+      const terrain = hero?.querySelector(".memory-terrain");
+      const burden = document.querySelector(".map-row.burden");
+      const layerRow = document.querySelector(".map-row.layer");
+      const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (!hero || !tideStage || !terrain || !burden || !layerRow) return;
+
+      if (reducedMotion) return;
+
+      let framePending = false;
+      const updateTide = () => {
+        const stageTop = tideStage.offsetTop;
+        const travel = Math.max(1, tideStage.offsetHeight - innerHeight);
+        const progress = Math.max(0, Math.min(1, (scrollY - stageTop) / travel));
+        const waveProgress = progress * progress * (3 - 2 * progress);
+        const haloProgress = Math.max(0, Math.min(1, (progress - 0.16) / 0.42));
+        const copyProgress = Math.max(0, Math.min(1, (progress - 0.16) / 0.42));
+        const screenRise = hero.offsetHeight * 0.68 * waveProgress;
+
+        hero.style.setProperty("--tide-inner-shift", `${-screenRise}px`);
+        hero.style.setProperty("--tide-cover", `${screenRise}px`);
+        hero.style.setProperty("--halo-opacity", String(1 - haloProgress));
+        hero.style.setProperty("--copy-shift", `${-18 * copyProgress}px`);
+        hero.style.setProperty("--copy-opacity", String(1 - copyProgress));
+        framePending = false;
+      };
+
+      addEventListener("scroll", () => {
+        if (framePending) return;
+        framePending = true;
+        requestAnimationFrame(updateTide);
+      }, { passive: true });
+
+      addEventListener("resize", updateTide, { passive: true });
+      updateTide();
+    })();
+  </script>
+  <script>
+    const copyToClipboard = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch {}
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+      document.body.appendChild(field);
+      field.focus();
+      field.select();
+      try { document.execCommand("copy"); } finally { field.remove(); }
+    };
+
+    (() => {
+      "use strict";
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches,
+        els = document.querySelectorAll(".reveal");
+      if (!reduced && "IntersectionObserver" in window) {
+        const ob = new IntersectionObserver(
+          (es) => es.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              ob.unobserve(e.target);
+            }
+          }),
+          { threshold: 0.08 }
+        );
+        els.forEach((e) => ob.observe(e));
+      } else els.forEach((e) => e.classList.add("in"));
+
+      const commands = {
+        install: 'git clone https://github.com/shashank-tomar0/super-agent.git\ncd super-agent\nnpm install && npm run build',
+        chrome: '1. Open chrome://extensions/\n2. Enable Developer Mode\n3. Click "Load unpacked"\n4. Select .output/chrome-mv3 folder',
+        ollama: 'ollama pull qwen2.5:3b\nollama run qwen2.5:3b',
+        zip: 'Direct ZIP URL:\nhttps://github.com/shashank-tomar0/super-agent/raw/master/docs/vless-0.1.0-chrome.zip',
+      };
+
+      const out = document.querySelector("#command");
+      document.querySelectorAll(".code-tab").forEach((t) =>
+        t.addEventListener("click", () => {
+          document.querySelectorAll(".code-tab").forEach((x) => x.classList.toggle("active", x === t));
+          out.textContent = commands[t.dataset.code];
+        })
+      );
+
+      const copy = document.querySelector(".copy");
+      if (copy) {
+        copy.addEventListener("click", async () => {
+          try {
+            await copyToClipboard(out.textContent);
+            copy.classList.add("copied");
+            setTimeout(() => copy.classList.remove("copied"), 1200);
+          } catch {}
+        });
+      }
+    })();
+  </script>
+</body>
+
+</html>
