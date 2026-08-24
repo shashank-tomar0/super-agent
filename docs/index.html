@@ -2604,7 +2604,7 @@
 
     /* Hero scale and position. Only the copy block moves. */
     .hero-proto-center {
-      transform: translateY(calc(-30px + var(--copy-shift)));
+      transform: translateY(calc(-95px + var(--copy-shift)));
     }
 
     .hero-proto-center .hero-headline {
@@ -4529,7 +4529,7 @@
 
     /* Brand first, then the problem it resolves. */
     .hero-proto-center {
-      transform: translateY(calc(-38px + var(--copy-shift)));
+      transform: translateY(calc(-95px + var(--copy-shift)));
     }
 
     .hero-product {
@@ -4547,7 +4547,7 @@
 
     @media (max-width: 850px) {
       .hero-proto-center {
-        transform: translateY(calc(-30px + var(--copy-shift)));
+        transform: translateY(calc(-80px + var(--copy-shift)));
       }
     }
 
@@ -4915,17 +4915,17 @@
     <section class="maps" id="memory-map">
       <div class="map-row burden reveal">
         <div class="map-label">
-          <span class="architecture-heading without-heading">
+          <div class="architecture-heading without-heading">
             without VLESS
             <svg class="architecture-arrow" viewBox="0 0 220 75" aria-hidden="true">
               <path d="M4 38C43 10 77 59 118 30S178 13 210 40" />
               <path d="M193 37L211 40L203 23" />
             </svg>
-          </span>
+          </div>
           <ul class="architecture-points">
-            <li>Cloud agents send raw screenshots to remote APIs.</li>
-            <li>Passwords, Aadhaar, & cards are exposed to 3rd parties.</li>
-            <li><span class="alert-you">YOU</span> risk critical data breaches on every web task.</li>
+            <li><strong>Cloud agents leak screenshots</strong><small>Raw pixels sent to 3rd party APIs on every task</small></li>
+            <li><strong>PII exposed to remote servers</strong><small>Passwords, Aadhaar, PAN & credit cards sent unencrypted</small></li>
+            <li><strong>High risk of privacy breaches</strong><small>No on-device filtering or egress control</small></li>
           </ul>
         </div>
         <svg class="map-svg" viewBox="0 0 940 430" role="img"
@@ -4974,17 +4974,17 @@
       </div>
       <div class="map-row layer reveal">
         <div class="map-label">
-          <span class="architecture-heading with-heading">
+          <div class="architecture-heading with-heading">
             with VLESS
             <svg class="architecture-arrow" viewBox="0 0 220 75" aria-hidden="true">
               <path d="M216 38C177 10 143 59 102 30S42 13 10 40" />
               <path d="M27 37L9 40L17 23" />
             </svg>
-          </span>
+          </div>
           <ul class="architecture-points">
-            <li>Visual perception & PII detection run <span class="memory-emphasis">100% on-device</span>.</li>
-            <li><span class="memory-emphasis">Egress Guard</span> blocks outbound PII before network call.</li>
-            <li>Only sanitized structural metadata reaches <span class="memory-emphasis">your LLM</span>.</li>
+            <li><strong>On-Device Visual Perception</strong><small>Florence-2 ViT & PP-OCR run 100% inside your browser</small></li>
+            <li><strong>Egress Guard Protection</strong><small>Blocks outbound PII before network transmission</small></li>
+            <li><strong>Zero Data Leak Guarantee</strong><small>Only sanitized structural metadata reaches LLMs</small></li>
           </ul>
         </div>
         <svg class="map-svg" viewBox="0 0 940 430" role="img"
