@@ -377,17 +377,27 @@ export async function executeFullPipeline(
         redactionSummary.cssInjected = true;
       }
 
-      // Show PII overlay on the page
+      // Show PII overlay on the page.
+      // OVERLAY FIX: always send even if 0 visual regions — the badge must
+      // show the total count (including text-detected PII without bounding boxes).
+      // Text-only PII (Aadhaar in page text, PAN in DOM) has boundingBox=null —
+      // we pass those as "textItems" for the badge list, not as drawn boxes.
+      const visualRegions = piiDetection.regions
+        .filter((r) => r.boundingBox)
+        .map((r) => ({
+          id: r.id,
+          category: r.category,
+          sensitivity: r.sensitivity,
+          boundingBox: r.boundingBox!,
+          confidence: r.confidence,
+        }));
+      const textItems = piiDetection.regions
+        .filter((r) => !r.boundingBox && r.textValue)
+        .map((r) => ({ category: r.category, sensitivity: r.sensitivity }));
+
       await sendToContentScript("SHOW_PII_OVERLAY", {
-        regions: piiDetection.regions
-          .filter((r) => r.boundingBox)
-          .map((r) => ({
-            id: r.id,
-            category: r.category,
-            sensitivity: r.sensitivity,
-            boundingBox: r.boundingBox!,
-            confidence: r.confidence,
-          })),
+        regions: visualRegions,
+        textItems,
         summary: {
           totalRegions: piiDetection.summary.totalRegions,
           criticalCount: piiDetection.summary.criticalCount,

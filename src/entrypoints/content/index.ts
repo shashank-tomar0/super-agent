@@ -790,11 +790,20 @@ export default defineContentScript({
       confidence: number;
     }
 
+    interface PIITextItem {
+      category: string;
+      sensitivity: string;
+    }
+
     function showPIIOverlay(data: {
       regions: PIIOverlayRegion[];
+      textItems?: PIITextItem[];
       summary: { totalRegions: number; criticalCount: number; highCount: number };
     }): void {
       hidePIIOverlay();
+
+      // Only skip if literally nothing detected
+      if (data.summary.totalRegions === 0) return;
 
       overlayContainer = document.createElement("div");
       overlayContainer.id = "vless-pii-overlay";
@@ -809,31 +818,33 @@ export default defineContentScript({
       `;
 
       const SENSITIVITY_COLORS: Record<string, string> = {
-        critical: "#ef4444",
+        critical: "#e23829",
         high: "#f97316",
         medium: "#eab308",
-        low: "#22c55e",
+        low: "#16a34a",
       };
 
-      const CATEGORY_ICONS: Record<string, string> = {
-        face: "[FACE]",
-        password: "[PASS]",
-        aadhaar: "[AADHAAR]",
-        phone: "[PHONE]",
-        email: "[EMAIL]",
-        pan: "[PAN]",
-        bank_account: "[BANK]",
-        name: "[NAME]",
-        address: "[ADDR]",
-        financial: "[FIN]",
-        medical: "[MED]",
+      const CATEGORY_LABELS: Record<string, string> = {
+        face: "Face",
+        password: "Password",
+        aadhaar: "Aadhaar",
+        phone: "Phone",
+        email: "Email",
+        pan: "PAN",
+        bank_account: "Bank Acct",
+        name: "Name",
+        address: "Address",
+        financial: "Financial",
+        medical: "Medical",
+        credit_card: "Card",
       };
 
+      // ── Draw visual bounding boxes for vision-detected PII ──
       for (const region of data.regions) {
         if (!region.boundingBox) continue;
         const bb = region.boundingBox;
         const color = SENSITIVITY_COLORS[region.sensitivity] || "#888";
-        const icon = CATEGORY_ICONS[region.category] || "[PII]";
+        const label = CATEGORY_LABELS[region.category] || region.category.toUpperCase();
 
         const box = document.createElement("div");
         box.style.cssText = `
@@ -844,54 +855,101 @@ export default defineContentScript({
           height: ${bb.height}px;
           border: 2px solid ${color};
           border-radius: 3px;
-          background: ${color}20;
+          background: ${color}18;
           pointer-events: none;
           transition: opacity 0.3s;
         `;
 
-        const label = document.createElement("span");
-        label.style.cssText = `
+        const chip = document.createElement("span");
+        chip.style.cssText = `
           position: absolute;
-          top: -18px;
+          top: -20px;
           left: 0;
           font-size: 10px;
-          font-weight: 600;
-          font-family: monospace;
+          font-weight: 700;
+          font-family: 'Spline Sans Mono', 'Courier New', monospace;
           color: white;
           background: ${color};
-          padding: 1px 5px;
+          padding: 1px 6px;
           border-radius: 2px;
           white-space: nowrap;
+          letter-spacing: 0.05em;
         `;
-        label.textContent = `${icon} ${region.sensitivity.toUpperCase()}`;
-        box.appendChild(label);
-
+        chip.textContent = `● ${label}`;
+        box.appendChild(chip);
         overlayContainer.appendChild(box);
       }
 
-      // Summary badge
+      // ── Summary badge — always visible, shows total count ──
       const badge = document.createElement("div");
       badge.style.cssText = `
         position: fixed;
-        top: 12px;
-        right: 12px;
-        background: #1a237e;
-        color: white;
-        padding: 8px 14px;
-        border-radius: 6px;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #28231d;
+        color: #f5f2e9;
+        padding: 10px 18px;
+        border-radius: 0;
+        border: 2px solid #e23829;
         font-size: 12px;
-        font-family: -apple-system, sans-serif;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        font-family: 'Spline Sans Mono', 'Courier New', monospace;
+        box-shadow: 4px 4px 0 #e2382940;
         pointer-events: auto;
         z-index: 2147483647;
+        max-width: 420px;
+        min-width: 220px;
       `;
-      badge.innerHTML = `
-        <div style="font-weight: 700; margin-bottom: 2px;">VLESS PII Detection</div>
-        <div>${data.summary.totalRegions} regions | ${data.summary.criticalCount} critical | ${data.summary.highCount} high</div>
-      `;
-      overlayContainer.appendChild(badge);
 
+      // Count categories for the chip list
+      const allItems = [
+        ...data.regions.map(r => ({ category: r.category, sensitivity: r.sensitivity })),
+        ...(data.textItems || []),
+      ];
+      const byCat: Record<string, { count: number; sensitivity: string }> = {};
+      for (const item of allItems) {
+        if (!byCat[item.category]) byCat[item.category] = { count: 0, sensitivity: item.sensitivity };
+        byCat[item.category].count++;
+      }
+
+      const chipsHTML = Object.entries(byCat).map(([cat, { count, sensitivity }]) => {
+        const color = SENSITIVITY_COLORS[sensitivity] || "#888";
+        const lbl = CATEGORY_LABELS[cat] || cat;
+        return `<span style="display:inline-block;background:${color};color:#fff;font-weight:700;padding:1px 7px;border-radius:2px;margin:2px 3px 2px 0;font-size:10px;letter-spacing:0.04em;">${lbl}${count > 1 ? ` ×${count}` : ""}</span>`;
+      }).join("");
+
+      const critText = data.summary.criticalCount > 0
+        ? `<span style="color:#e23829;font-weight:700"> · ${data.summary.criticalCount} CRITICAL</span>`
+        : "";
+
+      badge.innerHTML = `
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;letter-spacing:0.06em;color:#e23829;">
+          ● VLESS — ${data.summary.totalRegions} PII DETECTED${critText}
+        </div>
+        <div style="line-height:1.8;">${chipsHTML}</div>
+        <div style="margin-top:6px;font-size:10px;color:#a09882;letter-spacing:0.04em;">
+          All data stays on-device. Auto-dismiss in 8s.
+        </div>
+      `;
+
+      // Close button
+      const close = document.createElement("button");
+      close.textContent = "✕";
+      close.style.cssText = `
+        position: absolute;
+        top: 6px; right: 8px;
+        background: none; border: none;
+        color: #a09882; font-size: 14px; cursor: pointer;
+        pointer-events: auto; font-family: monospace; line-height: 1;
+      `;
+      close.onclick = () => hidePIIOverlay();
+      badge.appendChild(close);
+      badge.style.position = "fixed";
+      overlayContainer.appendChild(badge);
       document.body.appendChild(overlayContainer);
+
+      // Auto-dismiss after 8 seconds
+      setTimeout(() => hidePIIOverlay(), 8000);
     }
 
     function hidePIIOverlay(): void {
