@@ -3035,7 +3035,7 @@
       transform: rotate(-2deg);
     }
 
-    /* This doodle points back to the oneMEM diagram on the left. */
+    /* This doodle points back to the VLESS diagram on the left. */
     .with-heading .architecture-arrow {
       right: calc(100% - 2px);
       width: clamp(250px, 20vw, 360px);
@@ -4008,12 +4008,13 @@
     .horizontal-bar strong,
     .horizontal-bar output {
       position: absolute;
-      z-index: 1;
+      z-index: 2;
       top: 50%;
       transform: translateY(-50%);
-      color: #f3ebe5;
+      color: #ffffff !important;
       font: 600 clamp(13px, 1.3vw, 18px) var(--mono);
       letter-spacing: -0.02em;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
     }
 
     .horizontal-bar strong {
@@ -4959,11 +4960,11 @@
           </ul>
         </div>
         <svg class="map-svg" viewBox="0 0 940 430" role="img"
-          aria-label="You communicate with oneMEM, which serves memory to many AI tools">
+          aria-label="You control VLESS, which runs local visual perception on-device">
           <path class="thread" stroke="#1537ad" d="M126 221C197 221 244 186 314 160" />
           <path class="thread" stroke="#e2a0b8" d="M127 231C211 245 238 274 312 283" />
           <path class="echo" stroke="#d9b34e" d="M128 211C212 193 245 164 312 151" />
-          <text x="126" y="300">decisions · constraints · preferences</text>
+          <text x="126" y="300">DOM extraction · PP-OCR · ViT</text>
           <circle class="person" cx="91" cy="222" r="43" />
           <text class="coretext" x="91" y="229">YOU</text>
           <path class="thread" stroke="#1537ad" d="M504 183C584 130 661 95 743 83" />
@@ -4977,10 +4978,10 @@
           <ellipse class="memory" cx="418" cy="200" rx="103" ry="64" />
           <circle cx="315" cy="200" r="6" fill="#d9b34e" />
           <circle cx="521" cy="200" r="6" fill="#f36b57" />
-          <text x="418" y="193" fill="#fff" style="fill: #fff; font-size: 16px; font-family: var(--display)">
+          <text x="418" y="193" fill="#fff" style="fill: #fff; font-size: 18px; font-family: var(--display); font-weight:700;">
             VLESS
           </text>
-          <text x="418" y="217" fill="#fff" style="fill: #cbd4ff; font-size: 8px">
+          <text x="418" y="217" fill="#fff" style="fill: #cbd4ff; font-size: 9px; font-family: var(--mono); letter-spacing:0.08em;">
             0 KB EGRESS · LOCAL ViT
           </text>
           <circle class="tool" cx="748" cy="82" r="23" />
@@ -5235,7 +5236,7 @@ npm install && npm run build</pre>
         sharedDiagram.setAttribute("viewBox", "0 -100 940 530");
         sharedDiagram.setAttribute(
           "aria-label",
-          "You control oneMEM, which serves one shared memory to the same AI tools",
+          "You control VLESS, which runs local visual perception on-device",
         );
 
         if (memoryNode) {
@@ -5245,7 +5246,7 @@ npm install && npm run build</pre>
         }
 
         if (memoryLabel) {
-          memoryLabel.textContent = "oneMEM";
+          memoryLabel.textContent = "VLESS";
         }
 
         const controlThread = document.createElementNS(svgNamespace, "path");
@@ -5403,11 +5404,10 @@ npm install && npm run build</pre>
         els.forEach((e) => ob.observe(e));
       } else els.forEach((e) => e.classList.add("in"));
       const commands = {
-        install: 'git clone https://github.com/shashank-tomar0/super-agent.git\nnpm install && npm run build',
-        claude:
-          'claude mcp add --scope user onemem -- "$(command -v onemem-mcp)"',
-        codex: 'codex mcp add onemem -- "$(command -v onemem-mcp)"',
-        mcp: '{\n  "mcpServers": {\n    "onemem": {\n      "command": "/absolute/path/to/onemem-mcp"\n    }\n  }\n}',
+        install: 'git clone https://github.com/shashank-tomar0/super-agent.git\ncd super-agent\nnpm install && npm run build',
+        claude: '1. Open chrome://extensions/\n2. Enable Developer Mode\n3. Click "Load unpacked"\n4. Select .output/chrome-mv3 folder',
+        codex: 'ollama pull qwen2.5:3b\nollama run qwen2.5:3b',
+        mcp: 'Direct ZIP URL:\nhttps://github.com/shashank-tomar0/super-agent/raw/master/docs/vless-0.1.0-chrome.zip',
       };
       const out = document.querySelector("#command");
       document.querySelectorAll(".code-tab").forEach((t) =>
