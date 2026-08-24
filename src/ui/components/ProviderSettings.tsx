@@ -37,29 +37,30 @@ export function ProviderSettings() {
 
   const reload = useCallback(async () => {
     try {
-      const [list, act] = await Promise.all([
-        send<ProviderConfig[]>("GET_PROVIDERS"),
+      const [rawList, act] = await Promise.all([
+        send<ProviderConfig[] | null>("GET_PROVIDERS"),
         send<string | null>("GET_ACTIVE_PROVIDER"),
       ]);
-      setProviders(list || []);
-      setActive(act);
+      // SW cold-start can return null/undefined — always ensure an array
+      const list = Array.isArray(rawList) ? rawList : [];
+      setProviders(list);
+      setActive(act ?? null);
 
       const kMap: Record<string, string> = {};
       const mMap: Record<string, string> = {};
       const uMap: Record<string, string> = {};
 
-      if (list) {
-        for (const p of list) {
-          kMap[p.id] = p.apiKey ?? "";
-          mMap[p.id] = p.model ?? p.defaultModel ?? "";
-          uMap[p.id] = p.baseUrl ?? p.defaultBaseUrl ?? "";
-        }
+      for (const p of list) {
+        kMap[p.id] = p.apiKey ?? "";
+        mMap[p.id] = p.model ?? p.defaultModel ?? "";
+        uMap[p.id] = p.baseUrl ?? p.defaultBaseUrl ?? "";
       }
       setKeys(kMap);
       setModels(mMap);
       setBaseUrls(uMap);
     } catch (e) {
       console.error("Failed to load providers:", e);
+      // Don't crash — keep existing state so the UI remains functional
     }
   }, []);
 
@@ -68,6 +69,7 @@ export function ProviderSettings() {
   }, [reload]);
 
   const handleSave = async (id: ProviderID) => {
+    if (!Array.isArray(providers)) return;
     const p = providers.find((pr) => pr.id === id);
     if (!p) return;
 
@@ -84,6 +86,7 @@ export function ProviderSettings() {
   };
 
   const handleToggle = async (id: ProviderID, currentEnabled: boolean) => {
+    if (!Array.isArray(providers)) return;
     const p = providers.find((pr) => pr.id === id);
     if (!p) return;
 
@@ -111,7 +114,7 @@ export function ProviderSettings() {
     }
   };
 
-  const activeProvider = providers.find((p) => p.id === active);
+  const activeProvider = Array.isArray(providers) ? providers.find((p) => p.id === active) : null;
 
   return (
     <div className="space-y-4 font-sans text-[var(--color-ink)]">

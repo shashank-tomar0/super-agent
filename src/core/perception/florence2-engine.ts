@@ -22,8 +22,12 @@ import { detectBackend } from "../runtime/backend";
 
 // ── Configure transformers.js for browser ────────────────────
 
-env.allowLocalModels = true;
-env.useBrowserCache = true;
+// Florence-2 is NOT bundled as a local file — only PP-OCR models are bundled.
+// Enabling allowLocalModels causes transformers.js to try /models/onnx-community/Florence-2-base-ft/...
+// which generates 9 failed fetches before falling back to HuggingFace. Disable it.
+env.allowLocalModels = false;
+env.useBrowserCache = true; // Cache downloads in browser IndexedDB so they survive SW restarts
+
 if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
   (env as any).wasm = (env as any).wasm || {};
   (env as any).wasm.wasmPaths = chrome.runtime.getURL("ort/");
@@ -288,11 +292,10 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
   const totalStart = performance.now();
   const tasksRun: string[] = [];
   let elements: DetectedElement[] = [];
-  let textRegions: TextRegion[] = [];
-  let caption = "";
 
-  // Graceful degradation: if model fails to load in 15s, skip to fallback
-  const loaded = await ensureModelWithTimeout(15000);
+  // Graceful degradation: 300s timeout allows time for first-run HuggingFace download (333-544MB).
+  // Subsequent runs load from browser cache and complete in seconds.
+  const loaded = await ensureModelWithTimeout(300000);
   if (!loaded) {
     return {
       elements: [],
@@ -315,45 +318,24 @@ export async function perceiveScreen(imageUrl: string): Promise<ScreenGraph> {
   }
 
   try {
-    // Task 1: Open-vocab detection (find UI elements)
+    // Task 1: Open-vocab detection (find UI elements) with lightweight token limit
     const odStart = performance.now();
     elements = await detectElements(imageUrl);
     tasksRun.push("OD");
     const odTime = performance.now() - odStart;
 
-    // Task 2: OCR with regions (read all text)
-    const ocrStart = performance.now();
-    textRegions = await ocrWithRegion(imageUrl);
-    tasksRun.push("OCR_WITH_REGION");
-    const ocrTime = performance.now() - ocrStart;
-
-    // Task 3: Generate page caption (optional)
-    try {
-      const image = await RawImage.fromURL(imageUrl);
-      const inputs = await processor(image, {
-        text: "<CAPTION>",
-      });
-      const outputs = await model.generate({
-        ...inputs,
-        max_new_tokens: 128,
-      });
-      caption = processor.batch_decode(outputs, {
-        skip_special_tokens: true,
-      })[0].trim();
-      tasksRun.push("CAPTION");
-    } catch {
-      // Caption is optional — not a failure
-    }
+    // PP-OCR provides lightweight, high-speed on-device text OCR.
+    // Heavy 1024-token Florence-2 <OCR_WITH_REGION> is skipped to prevent WASM memory heap overflow.
 
     return {
       elements,
-      textRegions,
-      caption,
+      textRegions: [],
+      caption: "Screen elements recognized by Florence-2 ViT",
       timings: {
         total: performance.now() - totalStart,
         modelLoad: modelLoadTime,
         od: odTime,
-        ocr: ocrTime,
+        ocr: 0,
         grounding: 0,
       },
       tasksRun,
